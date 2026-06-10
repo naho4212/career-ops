@@ -18,16 +18,36 @@ import { readFileSync, writeFileSync, readdirSync, mkdirSync, renameSync, exists
 import { join, basename, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
+import { normalizeReportLink as normalizeLink } from './tracker-links.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
-// Support both layouts: data/applications.md (boilerplate) and applications.md (original)
-const APPS_FILE = existsSync(join(CAREER_OPS, 'data/applications.md'))
-  ? join(CAREER_OPS, 'data/applications.md')
-  : join(CAREER_OPS, 'applications.md');
-const ADDITIONS_DIR = join(CAREER_OPS, 'batch/tracker-additions');
+// Support both layouts: data/applications.md (boilerplate) and applications.md (original).
+// CAREER_OPS_TRACKER overrides the path (used by tests and non-standard layouts).
+const APPS_FILE = process.env.CAREER_OPS_TRACKER
+  ? process.env.CAREER_OPS_TRACKER
+  : existsSync(join(CAREER_OPS, 'data/applications.md'))
+    ? join(CAREER_OPS, 'data/applications.md')
+    : join(CAREER_OPS, 'applications.md');
+const TRACKER_DIR = dirname(APPS_FILE);
+// CAREER_OPS_ADDITIONS overrides the additions dir (used by tests, mirrors CAREER_OPS_TRACKER).
+const ADDITIONS_DIR = process.env.CAREER_OPS_ADDITIONS
+  ? process.env.CAREER_OPS_ADDITIONS
+  : join(CAREER_OPS, 'batch/tracker-additions');
 const MERGED_DIR = join(ADDITIONS_DIR, 'merged');
 const DRY_RUN = process.argv.includes('--dry-run');
 const VERIFY = process.argv.includes('--verify');
+const MIGRATE = process.argv.includes('--migrate');
+
+// The reports/ dir sits at the repo root, which is the tracker's parent in the
+// data/ layout (data/applications.md) and the tracker's own dir at root layout.
+const REPORTS_ROOT = basename(TRACKER_DIR) === 'data' ? dirname(TRACKER_DIR) : TRACKER_DIR;
+
+// Normalize a report link relative to the tracker file's own directory (#760).
+const normalizeReportLink = (reportField) => normalizeLink(reportField, TRACKER_DIR, REPORTS_ROOT);
+
+// Ensure required directories exist (fresh setup)
+mkdirSync(join(CAREER_OPS, 'data'), { recursive: true });
+mkdirSync(ADDITIONS_DIR, { recursive: true });
 
 // Canonical states and aliases
 const CANONICAL_STATES = ['Evaluated', 'Applied', 'Responded', 'Interview', 'Offer', 'Rejected', 'Discarded', 'SKIP'];
@@ -67,11 +87,86 @@ function normalizeCompany(name) {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+// Tokens that almost every role shares — must NOT count as signal.
+// Includes seniority, work-mode, contract, and common locations.
+const ROLE_STOPWORDS = new Set([
+  // seniority / level
+  'junior', 'mid', 'middle', 'senior', 'staff', 'principal', 'lead', 'head',
+  'chief', 'associate', 'intern', 'entry', 'level',
+  // contract / mode
+  'remote', 'hybrid', 'onsite', 'contract', 'contractor', 'freelance',
+  'fulltime', 'parttime', 'permanent', 'temporary', 'intern', 'internship',
+  // generic job words
+  'role', 'position', 'opportunity', 'team', 'based',
+  // very common locations (extend in portals.yml later if needed)
+  'bangalore', 'bengaluru', 'mumbai', 'delhi', 'hyderabad', 'pune', 'chennai',
+  'london', 'berlin', 'paris', 'madrid', 'barcelona', 'amsterdam', 'dublin',
+  'york', 'francisco', 'seattle', 'boston', 'austin', 'chicago', 'toronto',
+  'tokyo', 'singapore', 'sydney', 'melbourne', 'lisbon', 'warsaw',
+  // regions / countries
+  'europe', 'emea', 'apac', 'latam', 'americas', 'india', 'spain', 'germany',
+  'france', 'italy', 'canada', 'brazil', 'mexico', 'japan',
+  // prepositions leaking through length filter
+  'with', 'from', 'into', 'over', 'this', 'that',
+]);
+
+// Short specialty acronyms that ARE discriminating despite their length.
+// Without this allowlist, `length > 3` strips them out, leaving only the
+// generic "Software Engineer" baseline (see Issue #633).
+//
+// Deliberately narrow: includes tokens like 'api' / 'sre' / 'sdk' that name
+// a specific team or technology, and excludes broad ones like 'ai' / 'ml' /
+// 'llm' that appear across many roles (AI Engineer, ML Manager, etc.).
+// Adding the broad ones would regress #329's AI Success/Deployment case.
+const SHORT_SPECIALTY = new Set([
+  'api', 'sre', 'sdk', 'cli', 'gpu', 'cpu',
+  'ios', 'qa', 'ux', 'ui', 'ar', 'vr',
+  'ocr', 'crm', 'erp',
+]);
+
+// Generic role-level descriptors. Two roles whose ONLY overlap is in this
+// set (e.g. [software, engineer]) are NOT the same role — they're just
+// labelled at the same altitude. See Issue #633: "Staff SWE, API" vs
+// "Staff SWE, Kubernetes Platform" share [software, engineer] only.
+const BASELINE_TOKENS = new Set([
+  'software', 'engineer', 'developer', 'manager', 'architect',
+  'analyst', 'designer', 'consultant', 'specialist',
+  'platform', 'systems', 'services',
+  'backend', 'frontend', 'fullstack',
+]);
+
+function roleTokens(s) {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => (w.length > 3 || SHORT_SPECIALTY.has(w)) && !ROLE_STOPWORDS.has(w));
+}
+
 function roleFuzzyMatch(a, b) {
-  const wordsA = a.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-  const wordsB = b.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-  const overlap = wordsA.filter(w => wordsB.some(wb => wb.includes(w) || w.includes(wb)));
-  return overlap.length >= 2;
+  const wordsA = roleTokens(a);
+  const wordsB = roleTokens(b);
+  if (wordsA.length === 0 || wordsB.length === 0) return false;
+
+  const setB = new Set(wordsB);
+  const overlap = wordsA.filter(w => setB.has(w));
+  if (overlap.length < 2) return false;
+
+  // Require at least one non-baseline token in the overlap. Roles that
+  // share only generic descriptors like [software, engineer] are NOT the
+  // same role (see Issue #633).
+  const discriminating = overlap.filter(w => !BASELINE_TOKENS.has(w));
+  if (discriminating.length === 0) return false;
+
+  // True Jaccard ratio on content tokens (overlap / union). Dividing by the
+  // smaller side conflated distinct roles that share a long prefix — e.g.
+  // "Full-Stack Engineer 5, AI Insights & Visualizations" vs "Full Stack
+  // Engineer 5, Ads Reporting" (overlap full/stack/engineer = 3, min side 4
+  // → 0.75 "match"). Union punishes the non-shared specialty tokens, while
+  // genuine reposts (identical token sets) still score 1.0.
+  const union = new Set([...wordsA, ...wordsB]).size;
+  const ratio = overlap.length / union;
+  return ratio >= 0.6;
 }
 
 function extractReportNum(reportStr) {
@@ -187,6 +282,25 @@ if (!existsSync(APPS_FILE)) {
   process.exit(0);
 }
 const appContent = readFileSync(APPS_FILE, 'utf-8');
+
+// One-time migration: rewrite existing report links so they resolve relative
+// to the tracker file's directory (see #760). Run with: node merge-tracker.mjs --migrate
+if (MIGRATE) {
+  const migrated = appContent
+    .split('\n')
+    .map(line => (line.startsWith('|') ? normalizeReportLink(line) : line));
+  const before = appContent.split('\n');
+  const changed = migrated.filter((l, i) => l !== before[i]).length;
+
+  if (DRY_RUN) {
+    console.log(`🔎 Migration (dry-run): ${changed} row(s) would be rewritten in ${basename(APPS_FILE)}`);
+  } else {
+    writeFileSync(APPS_FILE, migrated.join('\n'));
+    console.log(`✅ Migration: rewrote ${changed} report link(s) in ${basename(APPS_FILE)} relative to ${TRACKER_DIR === CAREER_OPS ? 'repo root' : 'data/'}`);
+  }
+  process.exit(0);
+}
+
 const appLines = appContent.split('\n');
 const existingApps = [];
 let maxNum = 0;
@@ -234,6 +348,11 @@ for (const file of tsvFiles) {
   const addition = parseTsvContent(content, file);
   if (!addition) { skipped++; continue; }
 
+  // Normalize the report link to be relative to the tracker file's directory.
+  // The TSV convention carries a root-relative `reports/...` link; rewrite it
+  // so it resolves correctly when clicked from applications.md (see #760).
+  addition.report = normalizeReportLink(addition.report);
+
   // Check for duplicate by:
   // 1. Exact report number match
   // 2. Company + role fuzzy match
@@ -249,8 +368,16 @@ for (const file of tsvFiles) {
   }
 
   if (!duplicate) {
-    // Exact entry number match
-    duplicate = existingApps.find(app => app.num === addition.num);
+    // Exact entry number match — but only when the company also matches.
+    // The TSV `num` doubles as the tracker row id, yet report-file numbering
+    // and tracker-row numbering can drift out of sync (e.g. reports maxed at
+    // 067 while the tracker was already at #69). A bare num collision across
+    // *different* companies is that drift, not a duplicate — matching on num
+    // alone silently merges a brand-new role into an unrelated existing row.
+    const normCompany = normalizeCompany(addition.company);
+    duplicate = existingApps.find(app =>
+      app.num === addition.num && normalizeCompany(app.company) === normCompany
+    );
   }
 
   if (!duplicate) {
