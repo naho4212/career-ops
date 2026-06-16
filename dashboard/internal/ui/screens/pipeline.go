@@ -2,6 +2,7 @@ package screens
 
 import (
 	"fmt"
+	"math"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -1123,6 +1124,8 @@ func (m PipelineModel) renderPreview() string {
 		lines = append(lines, padStyle.Render(strings.Join(facts, "   ")))
 	}
 
+	outcome := previewOutcome(app)
+
 	// Check report cache
 	if summary, ok := m.reportCache[app.ReportPath]; ok {
 		if summary.archetype != "" {
@@ -1141,15 +1144,41 @@ func (m PipelineModel) renderPreview() string {
 			lines = append(lines, padStyle.Render(
 				labelStyle.Render("Remote: ")+valueStyle.Render(summary.remote)))
 		}
-	} else if app.Notes != "" {
-		// Fallback: show notes
+	} else if app.Notes != "" && outcome == "" {
+		// Fallback: show notes (the outcome line below already carries them)
 		notes := truncateRunes(app.Notes, m.width-10)
 		lines = append(lines, padStyle.Render(dimStyle.Render(notes)))
-	} else {
+	} else if outcome == "" {
 		lines = append(lines, padStyle.Render(dimStyle.Render("Loading preview...")))
 	}
 
+	// Closed-out postings: surface what happened as the last preview line.
+	// The notes-only fallback above disappears once a report summary is
+	// cached, which is exactly when the discard reason got lost (#787).
+	if outcome != "" {
+		// Width budget: 4 cols padding + 9 for the "Outcome: " label + slack,
+		// mirroring the m.width-10 budget of the notes fallback above.
+		lines = append(lines, padStyle.Render(
+			labelStyle.Render("Outcome: ")+valueStyle.Render(truncateRunes(outcome, m.width-14))))
+	}
+
 	return strings.Join(lines, "\n")
+}
+
+// previewOutcome returns "what happened" to a closed-out application — the raw
+// status (which often carries the decision date, e.g. "descartado 2026-03-12")
+// plus the tracker notes holding the reason. Returns "" for apps still in play.
+func previewOutcome(app model.CareerApplication) string {
+	switch data.NormalizeStatus(app.Status) {
+	case "discarded", "skip", "rejected":
+	default:
+		return ""
+	}
+	outcome := strings.TrimSpace(strings.ReplaceAll(app.Status, "**", ""))
+	if app.Notes != "" {
+		outcome += " — " + app.Notes
+	}
+	return outcome
 }
 
 func (m PipelineModel) renderHelp() string {
@@ -1267,23 +1296,29 @@ func (m PipelineModel) countByNormStatus(status string) int {
 	return count
 }
 
-// formatTimeAgo renders an ISO date as a relative duration: hours while the
-// contact is less than a day old ("5h ago"), days otherwise ("3d ago").
-// Tracker dates are day-granular, so hours count from local midnight of that day.
+// formatTimeAgo renders an ISO date as a relative duration in calendar days:
+// "today", "yesterday", or "Nd ago". Tracker dates are day-granular (no
+// time-of-day), so we never report sub-day hours — doing so would fabricate
+// precision the data doesn't have (e.g. an entry dated today would otherwise
+// read "13h ago" simply because it's 1pm, not because contact was 13h back).
 func formatTimeAgo(dateStr string) string {
 	t, err := time.ParseInLocation("2006-01-02", dateStr, time.Local)
 	if err != nil {
 		return dateStr // not a date — show it untouched rather than lie
 	}
-	d := time.Since(t)
-	if d < 0 {
-		d = 0
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	contactDay := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.Local)
+	// Round to the nearest day so DST transitions don't skew the count.
+	days := int(math.Round(today.Sub(contactDay).Hours() / 24))
+	switch {
+	case days <= 0:
+		return "today"
+	case days == 1:
+		return "yesterday"
+	default:
+		return fmt.Sprintf("%dd ago", days)
 	}
-	hours := int(d.Hours())
-	if hours < 24 {
-		return fmt.Sprintf("%dh ago", hours)
-	}
-	return fmt.Sprintf("%dd ago", hours/24)
 }
 
 // truncateRunes truncates a string to at most maxRunes runes, appending "..." if truncated.

@@ -15,10 +15,10 @@
  * See DATA_CONTRACT.md for the full system/user layer definitions.
  */
 
-import { execFileSync, execSync } from 'child_process';
+import { execFile, execFileSync, execSync } from 'child_process';
 import { readFileSync, writeFileSync, existsSync, unlinkSync, rmSync } from 'fs';
 import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -27,12 +27,19 @@ const CANONICAL_REPO = 'https://github.com/santifer/career-ops.git';
 const RAW_VERSION_URL = 'https://raw.githubusercontent.com/santifer/career-ops/main/VERSION';
 const RELEASES_API = 'https://api.github.com/repos/santifer/career-ops/releases/latest';
 
+// Matches a semver, with or without a leading `v` and an optional
+// Release Please component prefix (e.g. `career-ops-v1.9.0` → `1.9.0`).
+// Anchoring on `(?:^|-)` lets the releases-API fallback parse our tags,
+// which Release Please always prefixes with the component name.
+export const SEMVER_RE = /(?:^|-)v?(\d+\.\d+\.\d+)$/i;
+
 // System layer paths — ONLY these files get updated
 const SYSTEM_PATHS = [
   'modes/_shared.md',
   'modes/_profile.template.md',
   'modes/oferta.md',
   'modes/pdf.md',
+  'modes/cover.md',
   'modes/scan.md',
   'modes/batch.md',
   'modes/apply.md',
@@ -44,11 +51,13 @@ const SYSTEM_PATHS = [
   'modes/project.md',
   'modes/tracker.md',
   'modes/training.md',
+  'modes/interview.md',
   'modes/latex.md',
   'modes/followup.md',
   'modes/interview-prep.md',
   'modes/patterns.md',
   'modes/update.md',
+  'modes/ar/',
   'modes/de/',
   'modes/fr/',
   'modes/ja/',
@@ -57,18 +66,24 @@ const SYSTEM_PATHS = [
   'modes/tr/',
   'modes/ua/',
   'CLAUDE.md',
+  'OPENCODE.md',
   'AGENTS.md',
   'GEMINI.md',
   'generate-pdf.mjs',
   'generate-latex.mjs',
+  'generate-cover-letter.mjs',
   'merge-tracker.mjs',
   'tracker-links.mjs',
+  'tracker.mjs',
   'verify-pipeline.mjs',
   'dedup-tracker.mjs',
+  'role-matcher.mjs',
   'normalize-statuses.mjs',
   'cv-sync-check.mjs',
   'update-system.mjs',
+  'reserve-report-num.mjs',
   'scan.mjs',
+  'scan-ats-full.mjs',
   'providers/',
   'doctor.mjs',
   'check-liveness.mjs',
@@ -78,6 +93,10 @@ const SYSTEM_PATHS = [
   'followup-cadence.mjs',
   'gemini-eval.mjs',
   'test-all.mjs',
+  'test-salary-filter.mjs',
+  'tracker-columns-tests.mjs',
+  'validate-portals.mjs',
+  'updater-migration-tests.mjs',
   'batch/batch-prompt.md',
   'batch/batch-runner.sh',
   'batch/README.md',
@@ -89,8 +108,8 @@ const SYSTEM_PATHS = [
   '.env.example',
   '.agents/',
   '.claude/skills/',
+  '.opencode/skills/',
   '.claude-plugin/',
-  '.gemini/commands/',
   '.qwen/',
   'docs/',
   'writing-samples/README.md',
@@ -98,10 +117,13 @@ const SYSTEM_PATHS = [
   'DATA_CONTRACT.md',
   'CONTRIBUTING.md',
   'README.md',
+  'README.ar.md',
   'README.cn.md',
   'README.es.md',
+  'README.fr.md',
   'README.ja.md',
   'README.ko-KR.md',
+  'README.pl.md',
   'README.pt-BR.md',
   'README.ru.md',
   'README.ua.md',
@@ -118,7 +140,13 @@ const SYSTEM_PATHS = [
   'CITATION.cff',
   '.github/',
   'package.json',
+  'build-cv-latex.mjs',
   'scaffolder/',
+  'Dockerfile',
+  'docker-compose.yml',
+  '.dockerignore',
+  'cops',
+  'DOCKER.md',
 ];
 
 // User layer paths — NEVER touch these (safety check)
@@ -203,6 +231,25 @@ function gitStatusEntries() {
     }));
 }
 
+function extractArrayFromSource(source, name) {
+  const match = source.match(new RegExp(`const\\s+${name}\\s*=\\s*\\[([\\s\\S]*?)\\];`));
+  if (!match) return [];
+  return Array.from(match[1].matchAll(/['"]([^'"]+)['"]/g), (entry) => entry[1]);
+}
+
+function mergePathLists(...lists) {
+  const merged = [];
+  const seen = new Set();
+  for (const list of lists) {
+    for (const path of list) {
+      if (seen.has(path)) continue;
+      seen.add(path);
+      merged.push(path);
+    }
+  }
+  return merged;
+}
+
 function revertPaths(paths) {
   if (paths.length === 0) return;
   git('checkout', '--', ...paths);
@@ -213,6 +260,32 @@ function addPaths(paths) {
   git('add', '--', ...paths);
 }
 
+function dashboardGoSourcesChanged() {
+  try {
+    const changed = git('diff', '--name-only', 'HEAD', '--', 'dashboard');
+    return changed
+      .split('\n')
+      .some(path => path.startsWith('dashboard/') && path.endsWith('.go'));
+  } catch {
+    return false;
+  }
+}
+
+function rebuildDashboardBinaryIfNeeded() {
+  if (!dashboardGoSourcesChanged()) return;
+
+  try {
+    execFileSync('go', ['build', '-o', 'career-dashboard', '.'], {
+      cwd: join(ROOT, 'dashboard'),
+      timeout: 60000,
+      stdio: 'pipe',
+    });
+    console.log('dashboard binary rebuilt');
+  } catch {
+    console.log('dashboard binary rebuild skipped -- run: cd dashboard && go build -o career-dashboard . manually');
+  }
+}
+
 // ── CHECK ───────────────────────────────────────────────────────
 
 // curl helper used by check() — curl works inside the Claude Code sandbox
@@ -221,15 +294,20 @@ function addPaths(paths) {
 // not respect but curl handles transparently.  The --silent / --fail flags
 // match the failure-handling already used throughout apply().
 function curlGet(url, extraArgs = []) {
-  try {
-    return execFileSync(
+  return new Promise((resolve) => {
+    execFile(
       'curl',
       ['--silent', '--fail', '--max-time', '10', ...extraArgs, url],
       { encoding: 'utf-8', timeout: 12000 },
-    ).trim();
-  } catch {
-    return null; // network unreachable, 404, timeout, etc.
-  }
+      (error, stdout) => {
+        if (error) {
+          resolve(null);
+        } else {
+          resolve(stdout.trim());
+        }
+      }
+    );
+  });
 }
 
 async function check() {
@@ -247,9 +325,14 @@ async function check() {
   // Use curl instead of fetch() so the check works inside the Claude Code
   // sandbox (see curlGet() above for rationale).  Two sources are tried;
   // both failing is the only true-offline signal.
-  const SEMVER_RE = /^v?(\d+\.\d+\.\d+)$/i;
+  const [rawVersion, releaseRaw] = await Promise.all([
+    curlGet(RAW_VERSION_URL),
+    curlGet(RELEASES_API, [
+      '--header', 'Accept: application/vnd.github.v3+json',
+      '--header', 'User-Agent: career-ops-update-checker',
+    ]),
+  ]);
 
-  const rawVersion = curlGet(RAW_VERSION_URL);
   if (rawVersion !== null) {
     try {
       const raw = parseVersionFile(rawVersion);
@@ -260,10 +343,6 @@ async function check() {
     }
   }
 
-  const releaseRaw = curlGet(RELEASES_API, [
-    '--header', 'Accept: application/vnd.github.v3+json',
-    '--header', 'User-Agent: career-ops-update-checker',
-  ]);
   if (releaseRaw !== null) {
     try {
       const release = JSON.parse(releaseRaw);
@@ -314,50 +393,70 @@ async function check() {
 async function apply() {
   const local = localVersion();
   const initialStatusPaths = new Set(gitStatusEntries().map(entry => entry.path));
+  const isReexec = process.env.CAREER_OPS_UPDATE_REEXEC === '1';
 
   // Check for lock
   const lockFile = join(ROOT, '.update-lock');
-  if (existsSync(lockFile)) {
+  if (existsSync(lockFile) && !isReexec) {
     console.error('Update already in progress (.update-lock exists). If stuck, delete it manually.');
     process.exit(1);
   }
 
   // Create lock
-  writeFileSync(lockFile, new Date().toISOString());
+  if (!isReexec) {
+    writeFileSync(lockFile, new Date().toISOString());
+  }
 
   try {
     // 1. Backup: create branch
-    const backupBranch = updateBackupBranchName(local);
-    git('branch', backupBranch);
-    console.log(`Backup branch created: ${backupBranch}`);
+    const backupBranch = process.env.CAREER_OPS_UPDATE_BACKUP_BRANCH || updateBackupBranchName(local);
+    if (!isReexec) {
+      git('branch', backupBranch);
+      console.log(`Backup branch created: ${backupBranch}`);
+    }
 
     // 2. Fetch from canonical repo
     console.log('Fetching latest from upstream...');
     git('fetch', CANONICAL_REPO, 'main');
 
-    // 3. Checkout system files only
-    console.log('Updating system files...');
-    const updated = [];
-
-    // 3a. Bootstrap newly-introduced paths that the local update-system.mjs
-    // doesn't yet know about. Without this, cross-version migrations where
-    // a path is added to SYSTEM_PATHS by the new version can leave dangling
-    // symlinks — e.g. v1.6.x → v1.7.x where .agents/ was introduced but the
-    // local v1.6.x SYSTEM_PATHS didn't include it, so `.agents/` was never
-    // checked out while `.claude/skills/` was updated to symlink into it.
-    // See: https://github.com/santifer/career-ops/issues/649
-    const BOOTSTRAP_PATHS = ['.agents/', 'providers/', 'liveness-browser.mjs'];
-    for (const path of BOOTSTRAP_PATHS) {
-      if (SYSTEM_PATHS.includes(path)) continue; // already in main loop
+    if (!isReexec) {
       try {
-        git('checkout', 'FETCH_HEAD', '--', path);
-        updated.push(path);
-      } catch {
-        // Path may not exist in FETCH_HEAD yet
+        git('checkout', 'FETCH_HEAD', '--', 'update-system.mjs');
+        execFileSync(process.execPath, ['update-system.mjs', 'apply'], {
+          cwd: ROOT,
+          stdio: 'inherit',
+          timeout: 120000,
+          env: {
+            ...process.env,
+            CAREER_OPS_UPDATE_REEXEC: '1',
+            CAREER_OPS_UPDATE_BACKUP_BRANCH: backupBranch,
+          },
+        });
+        return;
+      } catch (err) {
+        console.error(`Updater self-reexec failed: ${err.message}`);
+        throw err;
       }
     }
 
-    for (const path of SYSTEM_PATHS) {
+    // 3. Checkout system files only
+    console.log('Updating system files...');
+    const updated = [];
+    let remoteSystemPaths = [];
+    try {
+      const remoteUpdaterSource = git('show', 'FETCH_HEAD:update-system.mjs');
+      remoteSystemPaths = extractArrayFromSource(remoteUpdaterSource, 'SYSTEM_PATHS');
+    } catch {
+      // Older targets may not have update-system.mjs. Fall back to the
+      // local manifest plus bootstrap paths below.
+    }
+
+    // 3a. Keep bootstrap paths as a fallback for very old targets, but the
+    // target updater's SYSTEM_PATHS is now the source of truth for new files.
+    const BOOTSTRAP_PATHS = ['.agents/', '.opencode/skills/', 'providers/', 'liveness-browser.mjs', 'tracker-links.mjs', 'role-matcher.mjs', 'scaffolder/', 'reserve-report-num.mjs', 'updater-migration-tests.mjs', 'validate-portals.mjs', 'tracker-columns-tests.mjs'];
+    const updatePaths = mergePathLists(SYSTEM_PATHS, remoteSystemPaths, BOOTSTRAP_PATHS);
+
+    for (const path of updatePaths) {
       try {
         git('checkout', 'FETCH_HEAD', '--', path);
         updated.push(path);
@@ -379,7 +478,7 @@ async function apply() {
         if (initialStatusPaths.has(file)) continue;
         // Explicit SYSTEM_PATHS entries override USER_PATHS prefix matches.
         // (e.g. writing-samples/README.md is system-owned doc inside a user dir.)
-        if (SYSTEM_PATHS.includes(file)) continue;
+        if (updatePaths.includes(file)) continue;
         for (const userPath of USER_PATHS) {
           if (file.startsWith(userPath)) {
             console.error(`SAFETY VIOLATION: User file was modified: ${file}`);
@@ -436,7 +535,10 @@ async function apply() {
       console.log('npm install skipped (may need manual run)');
     }
 
-    // 6. Commit the update
+    // 6. Rebuild compiled dashboard if Go sources changed
+    rebuildDashboardBinaryIfNeeded();
+
+    // 7. Commit the update
     const remote = localVersion(); // Re-read after checkout updated VERSION
     try {
       const pathsToStage = [...updated];
@@ -457,7 +559,7 @@ async function apply() {
 
   } finally {
     // Remove lock
-    if (existsSync(lockFile)) unlinkSync(lockFile);
+    if (!isReexec && existsSync(lockFile)) unlinkSync(lockFile);
   }
 }
 
@@ -553,22 +655,27 @@ function dismiss() {
 
 // ── MAIN ────────────────────────────────────────────────────────
 
-const cmd = process.argv[2] || 'check';
+// Only run the CLI when executed directly, so importing this module
+// (e.g. from test-all.mjs to exercise SEMVER_RE) does not trigger a
+// live update check.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const cmd = process.argv[2] || 'check';
 
-try {
-  switch (cmd) {
-    case 'check': await check(); break;
-    case 'apply': await apply(); break;
-    case 'rollback': rollback(); break;
-    case 'dismiss': dismiss(); break;
-    default:
-      console.log('Usage: node update-system.mjs [check|apply|rollback|dismiss]');
-      process.exit(1);
+  try {
+    switch (cmd) {
+      case 'check': await check(); break;
+      case 'apply': await apply(); break;
+      case 'rollback': rollback(); break;
+      case 'dismiss': dismiss(); break;
+      default:
+        console.log('Usage: node update-system.mjs [check|apply|rollback|dismiss]');
+        process.exit(1);
+    }
+  } catch (err) {
+    // Subcommands now `throw` on aborts so their outer `finally` blocks
+    // run (e.g. apply() must release `.update-lock`). Print a clean
+    // message here instead of letting Node spit out a stack trace.
+    console.error(err.message || err);
+    process.exit(1);
   }
-} catch (err) {
-  // Subcommands now `throw` on aborts so their outer `finally` blocks
-  // run (e.g. apply() must release `.update-lock`). Print a clean
-  // message here instead of letting Node spit out a stack trace.
-  console.error(err.message || err);
-  process.exit(1);
 }

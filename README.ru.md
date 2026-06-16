@@ -1,19 +1,61 @@
 # Career-Ops
 
-[English](README.md) | [Español](README.es.md) | [Português (Brasil)](README.pt-BR.md) | [한국어](README.ko-KR.md) | [日本語](README.ja.md) | [Русский](README.ru.md)
+[English](README.md) | [Español](README.es.md) | [Français](README.fr.md) | [Português (Brasil)](README.pt-BR.md) | [한국어](README.ko-KR.md) | [日本語](README.ja.md) | [简体中文](README.cn.md) | [繁體中文](README.zh-TW.md) | [Українська](README.ua.md) | [Русский](README.ru.md) | [Polski](README.pl.md) | [العربية](README.ar.md)
 
-> *Я месяцами откликался на вакансии вручную. И создал систему, которую хотел бы иметь с самого начала.*
-> Компании используют ИИ для фильтрации кандидатов. **Я дал кандидатам ИИ, чтобы *выбирать* компании.**
-> *Теперь это open source.*
+<p align="center">
+  <a href="https://x.com/santifer"><img src="docs/hero-banner.jpg" alt="Career-Ops Мультиагентная система поиска работы" width="800"></a>
+</p>
 
-[![Claude Code](https://img.shields.io/badge/Claude_Code-000?style=flat&logo=anthropic&logoColor=white)](https://claude.ai)
-[![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org)
-[![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev)
-[![MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <em>Я месяцами откликался на вакансии вручную. И создал систему, которую хотел бы иметь с самого начала.</em><br>
+  Компании используют ИИ для фильтрации кандидатов. <strong>Я дал кандидатам ИИ, чтобы <em>выбирать</em> компании.</strong><br>
+  <em>Теперь это open source.</em>
+</p>
+
+<p align="center">
+  <a href="https://trendshift.io/repositories/25195" target="_blank"><img src="https://trendshift.io/api/badge/repositories/25195" alt="santifer%2Fcareer-ops | Trendshift" style="width: 245px; height: 54px; vertical-align: middle;" width="245" height="54"/></a>
+  &nbsp;&nbsp;
+  <a href="https://www.producthunt.com/products/santifer-io?utm_source=badge-featured&utm_medium=badge" target="_blank"><img src="docs/press/producthunt.svg" alt="Career-Ops on Claude | Product Hunt" style="width: 206px; height: 54px; vertical-align: middle;" width="206" height="54"/></a>
+</p>
+
+<p align="center"><sub>УПОМИНАНИЯ В СМИ</sub></p>
+
+<p align="center">
+  <a href="https://wired.com.gr/article/to-ai-ergaleio-pou-fernei-epanastasi-ston-tropo-pou-psachnoume-douleia/" rel="noopener noreferrer nofollow"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/press/wired-dark.svg"><img src="docs/press/wired.svg" alt="WIRED" height="32"></picture></a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://www.businessinsider.com/how-i-built-tool-filter-job-listings-landed-head-ai-2026-4" rel="noopener noreferrer nofollow"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/press/business-insider-dark.svg"><img src="docs/press/business-insider.svg" alt="Business Insider" height="32"></picture></a>
+</p>
 
 ---
 
-**740+ вакансий оценено · 100+ персонализированных резюме · 1 позиция мечты получена**
+<p align="center">
+  <img src="docs/demo.gif" alt="Career-Ops Демо" width="800">
+</p>
+
+<p align="center"><strong>740+ вакансий оценено · 100+ персонализированных резюме · 1 позиция мечты получена</strong></p>
+
+<p align="center">
+  <a href="https://discord.gg/8pRpHETxa4"><img src="https://img.shields.io/badge/Присоединиться_к_сообществу-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  &nbsp;
+  <a href="https://www.npmjs.com/package/@santifer/career-ops"><img src="https://img.shields.io/npm/dt/@santifer/career-ops?style=for-the-badge&logo=npm&color=CB3837&label=npx%20installs" alt="npm installs"></a>
+</p>
+
+<p align="center">
+  <sub>Создано с помощью</sub><br>
+  <img src="https://img.shields.io/badge/Claude_Code-000?style=flat&logo=anthropic&logoColor=white" alt="Claude Code">
+  <img src="https://img.shields.io/badge/OpenCode-111827?style=flat&logo=terminal&logoColor=white" alt="OpenCode">
+  <img src="https://img.shields.io/badge/Gemini_CLI-4285F4?style=flat&logo=google&logoColor=white" alt="Gemini CLI">
+  <img src="https://img.shields.io/badge/Codex-412991?style=flat&logo=openai&logoColor=white" alt="Codex">
+  <img src="https://img.shields.io/badge/Qwen-615CED?style=flat" alt="Qwen">
+  <img src="https://img.shields.io/badge/GitHub_Copilot-000?style=flat&logo=githubcopilot&logoColor=white" alt="GitHub Copilot">
+  <br>
+  <img src="https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white" alt="Node.js">
+  <img src="https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white" alt="Go">
+  <img src="https://img.shields.io/badge/Playwright-2EAD33?style=flat&logo=playwright&logoColor=white" alt="Playwright">
+  <img src="https://img.shields.io/badge/Bubble_Tea-FF75B5?style=flat&logo=go&logoColor=white" alt="Bubble Tea">
+  <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT">
+  <a href="TRADEMARK.md"><img src="https://img.shields.io/badge/Trademark-Policy-blue.svg" alt="Trademark Policy"></a>
+</p>
 
 ## Что это
 
@@ -29,49 +71,51 @@ Career-Ops превращает любой AI-CLI в полноценный ко
 
 ## Возможности
 
-| Функция | Описание |
-|---|---|
-| **Авто-пайплайн** | Вставь URL → получи оценку + PDF + запись в трекере |
-| **6-блочная оценка** | Резюме роли, совпадение с CV, стратегия грейда, исследование компенсации, персонализация, подготовка к интервью (STAR+R) |
-| **Банк историй для интервью** | Накапливает STAR+Reflection истории — 5–10 мастер-историй, которые закрывают любой поведенческий вопрос |
-| **Скрипты переговоров** | Фреймворки зарплатных переговоров, отстаивание рыночной ставки, использование конкурирующих офферов |
-| **ATS PDF-генерация** | Резюме с инъекцией ключевых слов, дизайн Space Grotesk + DM Sans |
-| **Сканер порталов** | 45+ предустановленных компаний (международный рынок) + российские площадки (hh.ru, Хабр Карьера, trudvsem.ru и др.) — добавляются вручную в `portals.yml` |
-| **Пакетная обработка** | Параллельная оценка через `claude -p` воркеры |
-| **Dashboard TUI** | Терминальный UI для просмотра, фильтрации и сортировки пайплайна |
-| **Human-in-the-Loop** | ИИ оценивает и рекомендует, вы решаете и действуете. Система никогда не отправляет отклик сама |
-| **Целостность пайплайна** | Автоматический merge, дедупликация, нормализация статусов, проверки здоровья |
+| Функция                       | Описание                                                                                                                                                  |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Авто-пайплайн**             | Вставь URL → получи оценку + PDF + запись в трекере                                                                                                       |
+| **6-блочная оценка**          | Резюме роли, совпадение с CV, стратегия грейда, исследование компенсации, персонализация, подготовка к интервью (STAR+R) — плюс проверка легитимности вакансии (Блок G), которая выявляет мошеннические и фантомные вакансии |
+| **Банк историй для интервью** | Накапливает STAR+Reflection истории — 5–10 мастер-историй, которые закрывают любой поведенческий вопрос                                                   |
+| **Скрипты переговоров**       | Фреймворки зарплатных переговоров, отстаивание рыночной ставки, использование конкурирующих офферов                                                       |
+| **ATS PDF-генерация**         | Резюме с инъекцией ключевых слов, дизайн Space Grotesk + DM Sans                                                                                          |
+| **Сканер порталов**           | 45+ предустановленных компаний (международный рынок) + российские площадки (hh.ru, Хабр Карьера, trudvsem.ru и др.) — добавляются вручную в `portals.yml` |
+| **Пакетная обработка**        | Параллельная оценка через `claude -p` воркеры                                                                                                             |
+| **Dashboard TUI**             | Терминальный UI для просмотра, фильтрации и сортировки пайплайна                                                                                          |
+| **Human-in-the-Loop**         | ИИ оценивает и рекомендует, вы решаете и действуете. Система никогда не отправляет отклик сама                                                            |
+| **Целостность пайплайна**     | Автоматический merge, дедупликация, нормализация статусов, проверки здоровья                                                                              |
 
 ## Быстрый старт
 
+**Самый быстрый способ — одна команда:**
+
 ```bash
-# 1. Клонируй и установи
+npx @santifer/career-ops init
+```
+
+> 💡 `npx` поставляется вместе с [Node.js](https://nodejs.org) — он один раз запускает
+> установщик, ничего не устанавливая глобально. Ещё нет Node? Установи его сначала.
+> (Уже используешь Claude Code / Gemini / Codex CLI? Значит, он у тебя уже есть.)
+
+Это клонирует последний релиз в `./career-ops` и устанавливает зависимости. Затем:
+
+```bash
+cd career-ops
+claude   # или gemini / codex / qwen / opencode — открой здесь свой AI-CLI
+```
+
+**При первом запуске career-ops проведёт тебя через настройку — твоё CV, профиль и целевые роли — просто через диалог. Ничего не нужно править вручную.**
+
+<details>
+<summary><b>Предпочитаешь настроить вручную? (git clone)</b></summary>
+
+```bash
 git clone https://github.com/santifer/career-ops.git
 cd career-ops && npm install
-npx playwright install chromium   # Для генерации PDF
-
-# 2. Проверь настройки
-npm run doctor                     # Валидация всех зависимостей
-
-# 3. Настрой
-cp config/profile.example.yml config/profile.yml  # Заполни свои данные
-cp templates/portals.example.yml portals.yml       # Настрой компании
-
-# 4. Добавь своё CV
-# Создай cv.md в корне проекта с резюме в формате Markdown
-
-# 5. Персонализируй через Claude
-claude   # Открой Claude Code в директории проекта
-
-# Попроси Claude адаптировать систему:
-# "Смени архетипы на backend-разработку PHP/Go"
-# "Переведи режимы на русский"  
-# "Добавь эти 5 компаний в portals.yml"
-# "Обнови мой профиль из этого CV"
-
-# 6. Начинай
-# Вставь URL вакансии или запусти /career-ops
+npx playwright install chromium   # нужно только для генерации PDF
+claude   # открой свой AI-CLI — он проведёт онбординг при первом запуске
 ```
+
+</details>
 
 ## Использование
 
@@ -120,15 +164,15 @@ Career-ops — одна slash-команда с множеством режим�
 
 Career-ops поддерживает ключевые российские джоб-борды:
 
-| Площадка | URL | Тип | Особенности |
-|---|---|---|---|
-| **HeadHunter** | [hh.ru](https://hh.ru) | API + Web | Главная площадка РФ. Открытый API. 600k+ IT-вакансий |
-| **Хабр Карьера** | [career.habr.com](https://career.habr.com) | Web | IT-вакансии, грейды, зарплатные вилки, техническое комьюнити |
-| **Работа в России** | [trudvsem.ru](https://trudvsem.ru) | API + Web | Госпортал Роструда. Открытый API для массового парсинга |
-| **Rabota.ru** | [rabota.ru](https://rabota.ru) | Web | Принадлежит Сберу. Крупные компании, финтех |
-| **Superjob** | [superjob.ru](https://www.superjob.ru) | Web | Вторая по величине после hh.ru |
-| **Geekjob** | [geekjob.ru](https://geekjob.ru) | Web | IT-вакансии с указанием вилок |
-| **Буду** | [budu.jobs](https://budu.jobs) | Web | IT-вакансии, бывший Хантфлоу |
+| Площадка            | URL                                        | Тип       | Особенности                                                  |
+| ------------------- | ------------------------------------------ | --------- | ------------------------------------------------------------ |
+| **HeadHunter**      | [hh.ru](https://hh.ru)                     | API + Web | Главная площадка РФ. Открытый API. 600k+ IT-вакансий         |
+| **Хабр Карьера**    | [career.habr.com](https://career.habr.com) | Web       | IT-вакансии, грейды, зарплатные вилки, техническое комьюнити |
+| **Работа в России** | [trudvsem.ru](https://trudvsem.ru)         | API + Web | Госпортал Роструда. Открытый API для массового парсинга      |
+| **Rabota.ru**       | [rabota.ru](https://rabota.ru)             | Web       | Принадлежит Сберу. Крупные компании, финтех                  |
+| **Superjob**        | [superjob.ru](https://www.superjob.ru)     | Web       | Вторая по величине после hh.ru                               |
+| **Geekjob**         | [geekjob.ru](https://geekjob.ru)           | Web       | IT-вакансии с указанием вилок                                |
+| **Буду**            | [budu.jobs](https://budu.jobs)             | Web       | IT-вакансии, бывший Хантфлоу                                 |
 
 **Telegram-каналы** (мониторинг вручную): @devjobs, @frontendjob, @gophersjob, @phpjobsru, @remote_it
 
