@@ -16,9 +16,15 @@
  */
 
 import { execFile, execFileSync, execSync } from 'child_process';
-import { readFileSync, writeFileSync, existsSync, unlinkSync, rmSync, lstatSync } from 'fs';
-import { join, dirname } from 'path';
+import { readFileSync, writeFileSync, existsSync, unlinkSync, rmSync } from 'fs';
+import { join, dirname, posix as pathPosix } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+import {
+  ensureSkillEntrypoints,
+  materializeSkillEntrypoints,
+} from './scaffolder/bin/skill-entrypoints.mjs';
+
+export { materializeSkillEntrypoints, ensureSkillEntrypoints };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -37,6 +43,7 @@ export const SEMVER_RE = /(?:^|-)v?(\d+\.\d+\.\d+)$/i;
 const SYSTEM_PATHS = [
   'modes/_shared.md',
   'modes/_profile.template.md',
+  'modes/_custom.template.md',
   'modes/oferta.md',
   'modes/pdf.md',
   'modes/cover.md',
@@ -58,19 +65,28 @@ const SYSTEM_PATHS = [
   'modes/patterns.md',
   'modes/update.md',
   'modes/ar/',
+  'modes/da/',
   'modes/de/',
   'modes/fr/',
   'modes/ja/',
+  'modes/pl/',
   'modes/pt/',
   'modes/ru/',
   'modes/tr/',
   'modes/ua/',
+  'modes/heuristics/',
+  'modes/regional/',
+  'modes/zh/',
   'CLAUDE.md',
+  'CODEX.md',
   'OPENCODE.md',
   'AGENTS.md',
   'GEMINI.md',
+  'KIMI.md',
+  'build-dashboard.mjs',
   'generate-pdf.mjs',
   'generate-latex.mjs',
+  'archive-posting.mjs',
   'generate-cover-letter.mjs',
   'merge-tracker.mjs',
   'tracker-links.mjs',
@@ -79,26 +95,37 @@ const SYSTEM_PATHS = [
   'reconcile-pipeline.mjs',
   'dedup-tracker.mjs',
   'role-matcher.mjs',
+  'tracker-utils.mjs',
+  'tracker-parse.mjs',
   'normalize-statuses.mjs',
   'cv-sync-check.mjs',
   'update-system.mjs',
   'reserve-report-num.mjs',
   'scan.mjs',
   'scan-ats-full.mjs',
+  'match-star.mjs',
   'providers/',
   'doctor.mjs',
   'check-liveness.mjs',
   'liveness-core.mjs',
+  'liveness-api.mjs',
   'liveness-browser.mjs',
   'analyze-patterns.mjs',
+  'detect-reposts.mjs',
   'followup-cadence.mjs',
   'gemini-eval.mjs',
+  'ollama-eval.mjs',
+  'openai-eval.mjs',
+  'openrouter-runner.mjs',
   'test-all.mjs',
+  'detect-reposts.test.mjs',
   'test-salary-filter.mjs',
+  'test-trust-validator.mjs',
   'tracker-columns-tests.mjs',
   'validate-portals.mjs',
   'verify-portals.mjs',
   'updater-migration-tests.mjs',
+  'validate-system-paths-coverage.mjs',
   'batch/batch-prompt.md',
   'batch/batch-runner.sh',
   'batch/README.md',
@@ -111,17 +138,24 @@ const SYSTEM_PATHS = [
   '.agents/',
   '.claude/skills/',
   '.opencode/skills/',
+  '.opencode/commands/',
   '.claude-plugin/',
   '.qwen/',
   '.antigravitycli/skills/',
+  '.grok/skills/',
+  '.kimi/skills/',
   'docs/',
   'writing-samples/README.md',
   'VERSION',
   'DATA_CONTRACT.md',
   'CONTRIBUTING.md',
+  'MAINTAINERS.md',
+  'ARCHITECTURE.md',
   'README.md',
   'README.ar.md',
   'README.cn.md',
+  'README.da.md',
+  'README.de.md',
   'README.es.md',
   'README.fr.md',
   'README.ja.md',
@@ -152,23 +186,12 @@ const SYSTEM_PATHS = [
   'DOCKER.md',
 ];
 
-const CANONICAL_SKILL_PATH = '.agents/skills/career-ops/SKILL.md';
-const SKILL_ENTRYPOINTS = [
-  {
-    path: '.claude/skills/career-ops/SKILL.md',
-    pointer: '../../../.agents/skills/career-ops/SKILL.md',
-  },
-  {
-    path: '.opencode/skills/career-ops/SKILL.md',
-    pointer: '../../../.agents/skills/career-ops/SKILL.md',
-  },
-];
-
 // User layer paths — NEVER touch these (safety check)
 const USER_PATHS = [
   'cv.md',
   'config/profile.yml',
   'modes/_profile.md',
+  'modes/_custom.md',
   'voice-dna.md',
   'portals.yml',
   'article-digest.md',
@@ -251,7 +274,7 @@ function gitStatusEntries() {
     }));
 }
 
-function extractArrayFromSource(source, name) {
+export function extractArrayFromSource(source, name) {
   const match = source.match(new RegExp(`const\\s+${name}\\s*=\\s*\\[([\\s\\S]*?)\\];`));
   if (!match) return [];
   return Array.from(match[1].matchAll(/['"]([^'"]+)['"]/g), (entry) => entry[1]);
@@ -270,46 +293,68 @@ function mergePathLists(...lists) {
   return merged;
 }
 
-function repoPath(root, path) {
-  return join(root, ...path.split('/'));
+// Files the self-reexec stage must check out so the TARGET update-system.mjs
+// loads without a missing-module crash. Today this is the entry plus its only
+// local import; resolveReexecCheckout derives the real set from the fetched
+// source, so this is only a defensive fallback if parsing ever misses one.
+const REEXEC_FALLBACK_FILES = ['update-system.mjs', 'scaffolder/bin/skill-entrypoints.mjs'];
+
+// Extracts static relative import/export specifiers ('./x.mjs', '../y.mjs')
+// from ESM source. Bare ('node:fs') and package ('js-yaml') specifiers are
+// ignored — only on-disk relative modules need to exist before re-exec.
+export function relativeImportSpecifiers(source) {
+  const specs = new Set();
+  const fromRe = /\b(?:import|export)\b[^;]*?\bfrom\s*['"]([^'"]+)['"]/g;
+  const bareRe = /\bimport\s*['"]([^'"]+)['"]/g;
+  let match;
+  while ((match = fromRe.exec(source))) specs.add(match[1]);
+  while ((match = bareRe.exec(source))) specs.add(match[1]);
+  return [...specs].filter((spec) => spec.startsWith('.'));
 }
 
-export function materializeSkillEntrypoints(root = ROOT) {
-  const canonicalPath = repoPath(root, CANONICAL_SKILL_PATH);
-  if (!existsSync(canonicalPath)) return [];
-
-  let canonicalContent = '';
-  try {
-    canonicalContent = readFileSync(canonicalPath, 'utf-8');
-  } catch {
-    return [];
-  }
-  const materialized = [];
-
-  for (const entry of SKILL_ENTRYPOINTS) {
-    const entryPath = repoPath(root, entry.path);
-    if (!existsSync(entryPath)) continue;
-
-    let stat = null;
+// Resolves the relative-import closure of `entry` within a git ref and returns
+// the repo-relative paths (forward-slash, Windows-safe) the re-exec stage must
+// check out. Only files actually present in the ref are returned; the known
+// fallback files are appended defensively. This generalizes the previously
+// hardcoded checkout list so a future new top-level import can't reintroduce
+// the self-reexec ERR_MODULE_NOT_FOUND crash (issue #1245).
+function resolveReexecCheckout(ref, entry) {
+  const visited = new Set();
+  const present = new Set();
+  const order = [];
+  const stack = [entry];
+  while (stack.length) {
+    const file = stack.pop();
+    if (visited.has(file)) continue;
+    visited.add(file);
+    let source;
     try {
-      stat = lstatSync(entryPath);
+      source = git('show', `${ref}:${file}`);
     } catch {
-      continue;
+      continue; // absent in this ref — leave it to the normal update stage
     }
-    if (stat.isSymbolicLink()) continue;
-    if (!stat.isFile()) continue;
-
-    try {
-      const content = readFileSync(entryPath, 'utf-8').trim();
-      if (content !== entry.pointer) continue;
-      writeFileSync(entryPath, canonicalContent);
-    } catch {
-      continue;
+    present.add(file);
+    order.push(file);
+    const dir = pathPosix.dirname(file);
+    for (const spec of relativeImportSpecifiers(source)) {
+      stack.push(pathPosix.join(dir, spec));
     }
-    materialized.push(entry.path);
   }
+  for (const file of REEXEC_FALLBACK_FILES) {
+    if (present.has(file)) continue;
+    try {
+      git('show', `${ref}:${file}`);
+      order.push(file);
+      present.add(file);
+    } catch {
+      // Not in the target tree (older version) — nothing to check out.
+    }
+  }
+  return order;
+}
 
-  return materialized;
+function repoPath(root, path) {
+  return join(root, ...path.split('/'));
 }
 
 export function prepareMaterializedSkillEntrypointsForStage(paths, root = ROOT) {
@@ -531,7 +576,12 @@ async function apply() {
 
     if (!isReexec) {
       try {
-        git('checkout', 'FETCH_HEAD', '--', 'update-system.mjs');
+        // The re-exec runs the TARGET updater, so every local module it imports
+        // at load time must exist first. Resolve the fetched update-system.mjs's
+        // relative-import closure and check out exactly those files, so a future
+        // new top-level import can't reintroduce the self-reexec crash (#1245).
+        const reexecFiles = resolveReexecCheckout('FETCH_HEAD', 'update-system.mjs');
+        git('checkout', 'FETCH_HEAD', '--', ...reexecFiles);
         execFileSync(process.execPath, ['update-system.mjs', 'apply'], {
           cwd: ROOT,
           stdio: 'inherit',
@@ -563,7 +613,7 @@ async function apply() {
 
     // 3a. Keep bootstrap paths as a fallback for very old targets, but the
     // target updater's SYSTEM_PATHS is now the source of truth for new files.
-    const BOOTSTRAP_PATHS = ['.agents/', '.opencode/skills/', '.antigravitycli/skills/', 'providers/', 'liveness-browser.mjs', 'tracker-links.mjs', 'role-matcher.mjs', 'scaffolder/', 'reserve-report-num.mjs', 'updater-migration-tests.mjs', 'validate-portals.mjs', 'tracker-columns-tests.mjs'];
+    const BOOTSTRAP_PATHS = ['.agents/', '.opencode/skills/', '.antigravitycli/skills/', '.grok/skills/', '.kimi/skills/', 'providers/', 'liveness-browser.mjs', 'tracker-links.mjs', 'role-matcher.mjs', 'tracker-utils.mjs', 'tracker-parse.mjs', 'scaffolder/', 'reserve-report-num.mjs', 'updater-migration-tests.mjs', 'validate-portals.mjs', 'tracker-columns-tests.mjs'];
     const updatePaths = mergePathLists(SYSTEM_PATHS, remoteSystemPaths, BOOTSTRAP_PATHS);
 
     for (const path of updatePaths) {
@@ -575,7 +625,7 @@ async function apply() {
       }
     }
 
-    const materializedSkillEntrypoints = materializeSkillEntrypoints();
+    const materializedSkillEntrypoints = ensureSkillEntrypoints(ROOT);
     if (materializedSkillEntrypoints.length > 0) {
       for (const path of materializedSkillEntrypoints) {
         if (!updated.includes(path)) updated.push(path);
