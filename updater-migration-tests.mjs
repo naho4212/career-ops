@@ -46,12 +46,14 @@ const userPaths = extractArray('USER_PATHS');
 const bootstrapPaths = extractArray('BOOTSTRAP_PATHS');
 
 const requiredSystemPaths = [
+  'modes/email.md',
   'modes/followup.md',
   'modes/interview.md',
   'modes/interview-prep.md',
   'modes/patterns.md',
   'modes/update.md',
   'modes/ar/',
+  'modes/hi/',
   'modes/tr/',
   'modes/ua/',
   'batch/README.md',
@@ -66,6 +68,7 @@ const requiredSystemPaths = [
   'updater-migration-tests.mjs',
   'README.ar.md',
   'README.de.md',
+  'README.hi.md',
   'README.ja.md',
   'README.ua.md',
   'CHANGELOG.md',
@@ -157,6 +160,41 @@ const twoPassManifestChecks = [
     name: 'apply captures uncommitted work via git stash create before branching (#915)',
     pattern: /git\('stash',\s*'create'\)/,
   },
+  {
+    // A client whose manifest predates the target checks out only its own
+    // paths, so everything added upstream since is silently absent and apply
+    // still printed "Update complete" (#1998).
+    name: 'apply verifies the target manifest materialized before claiming success (#1998)',
+    pattern: /missingFromTargetManifest\(remoteSystemPaths\)/,
+  },
+  {
+    name: 'an incomplete apply exits non-zero instead of reporting success (#1998)',
+    pattern: /Update incomplete[\s\S]{0,600}?process\.exit\(1\)/,
+  },
+  {
+    // execFileSync inherits stderr, so an expected per-path skip printed git's
+    // raw pathspec error right before the success banner (#1998).
+    name: 'per-path checkout pipes stderr so expected skips stay quiet (#1998)',
+    pattern: /gitQuiet\('checkout',\s*'FETCH_HEAD',\s*'--',\s*path\)/,
+  },
+  {
+    name: 'skipped upstream-absent paths are summarized explicitly (#1998)',
+    pattern: /Skipped \$\{skippedPaths\.length\} path\(s\) absent upstream/,
+  },
+  {
+    // existsSync on a pre-existing directory (docs/) would call it materialized
+    // even when the target added files under it — the verification must recurse
+    // into directory entries against FETCH_HEAD (#1998 CodeRabbit review).
+    name: 'manifest verification recurses into directory entries via ls-tree (#1998)',
+    pattern: /ls-tree', '-r', '--name-only', 'FETCH_HEAD'[\s\S]{0,400}?treeFiles\.some\(f => !existsSync/,
+  },
+  {
+    // A checkout failure is only an expected skip when the path is truly absent
+    // from FETCH_HEAD; timeouts/permission errors must rethrow, not report
+    // success (#1998 CodeRabbit review).
+    name: 'a checkout failure only skips when the path is absent upstream, else rethrows (#1998)',
+    pattern: /catch \{ absentUpstream = true; \}\s*if \(!absentUpstream\) throw err;/,
+  },
 ];
 
 for (const check of twoPassManifestChecks) {
@@ -164,12 +202,31 @@ for (const check of twoPassManifestChecks) {
   else fail(check.name);
 }
 
+// #1706: update-system.mjs must be self-loading — no static (top-level) relative
+// imports. A pre-#1245 client's apply() self-reexec checks out ONLY
+// update-system.mjs before re-execing it, so any top-level `import ... from
+// './...'` (or bare `import './...'`) crashes that re-exec with
+// ERR_MODULE_NOT_FOUND on the old→new jump. Relative modules must be lazily
+// `await import()`ed at their point of use instead.
+const staticRelativeImport = /^\s*(?:import|export)\b[^\n]*?\bfrom\s*['"]\.[^'"]*['"]|^\s*import\s*['"]\.[^'"]*['"]/m;
+if (staticRelativeImport.test(source)) {
+  fail('update-system.mjs is self-loading — no static relative imports (#1706)');
+} else {
+  pass('update-system.mjs is self-loading — no static relative imports (#1706)');
+}
+
 for (const userPath of ['cv.md', 'config/profile.yml', 'modes/_profile.md', 'portals.yml', 'data/', 'reports/']) {
   if (userPaths.includes(userPath)) pass(`USER_PATHS protects ${userPath}`);
   else fail(`USER_PATHS missing ${userPath}`);
 }
 
-const allowedSystemUserOverlap = new Set(['writing-samples/README.md']);
+const allowedSystemUserOverlap = new Set([
+  'writing-samples/README.md',
+  // System-owned scaffold inside the user-layer interview-prep/ dir (#1242):
+  // the updater ships these two, but never the real session files alongside them.
+  'interview-prep/sessions/.gitkeep',
+  'interview-prep/sessions/README.md',
+]);
 let hasSystemUserCollision = false;
 for (const systemPath of systemPaths) {
   const overlapsUserPath = userPaths.some((userPath) => {
