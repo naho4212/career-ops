@@ -28,13 +28,12 @@ step; it does not crash. Point it at another checkout with
   clickable too.
 - **Report** opens the drawer. While it is out, clicking another row or moving
   with `j`/`k` swaps in that row's report; clicking anywhere outside the table
-  or drawer (search, tools, filters) collapses it. **Show file** in the drawer
-  header reveals the report in Finder.
-- **PDF** appears on rows with a CV PDF and opens it inline in a new tab; the
-  same link sits in the report drawer's header. The PDF is resolved from
+  or drawer (search, tools, filters) collapses it.
+- **PDF / Show** appear on rows with a CV PDF. `PDF` is a link that opens the
+  CV inline in a new tab; `Show` reveals the file in Finder (macOS-only;
+  elsewhere the toast shows the path). The PDF is resolved from
   `data/pdf-index.tsv`, then the report's `**PDF:**` line, then a company-slug
-  match in `output/*.pdf` (newest wins). Reveal (drawer `Show file`) is
-  macOS-only; elsewhere the toast shows the path instead.
+  match in `output/*.pdf` (newest wins).
 
 ## Two independent update channels
 
