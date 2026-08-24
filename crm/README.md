@@ -42,6 +42,11 @@ and the report's **Generate CV** — each have an **in terminal** alternative
 that switches to this tab and types the equivalent interactive `claude "…"`
 command, unsubmitted, so you can read or edit it and press Enter.
 
+Keys follow macOS terminal conventions: ⌥←/→ word jump, ⌥⌫ delete word,
+⌘⌫ kill the line, ⌘←/→ line start/end, ⌘A select all, ⌘K clear, ⌘C copy
+(or interrupt when nothing is selected), ⌘V paste, ⇧↩ / ⌥↩ newline inside
+`claude`.
+
 Security: the server binds to 127.0.0.1 and the upgrade to `/term` requires
 both a matching `Origin` and a per-launch token embedded in the served page,
 so no other page or process on the machine can open a shell through it. One

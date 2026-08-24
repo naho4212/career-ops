@@ -973,12 +973,36 @@ async function openTerminal(){
   const css = getComputedStyle(document.documentElement);
   term = new Terminal({
     cursorBlink: true, fontSize: 12.5, lineHeight: 1.25, scrollback: 5000, allowProposedApi: true,
+    macOptionIsMeta: true, // ⌥←/→ word jump, ⌥⌫ word delete, ⌥↩ newline in claude — via ESC-prefixed keys
     fontFamily: css.getPropertyValue('--mono').trim() || 'ui-monospace, Menlo, monospace',
     theme: { background: css.getPropertyValue('--base').trim(), foreground: css.getPropertyValue('--text').trim(),
       cursor: css.getPropertyValue('--live').trim(), selectionBackground: '#2E3641',
       black:'#0D1014', brightBlack:'#5C6773', red:'#E8636F', green:'#4FD1A5', yellow:'#E9B44C', blue:'#5EA9E8', magenta:'#B08BF8', cyan:'#6ED4D4', white:'#C9D1D9', brightWhite:'#F0F3F6' },
   });
   termFit = new FitAddon.FitAddon(); term.loadAddon(termFit);
+  // macOS terminal conventions the browser would otherwise swallow. Returning
+  // false stops xterm from also handling the key.
+  const send = d => { if (termWs?.readyState === 1) termWs.send(JSON.stringify({ t:'in', d })); };
+  term.attachCustomKeyEventHandler(e => {
+    if (e.type !== 'keydown') return true;
+    const k = e.key.toLowerCase();
+    if (e.metaKey && !e.ctrlKey && !e.altKey){
+      if (e.key === 'Backspace'){ send('\x15'); return false; }       // ⌘⌫  kill whole line (Ctrl-U)
+      if (e.key === 'ArrowLeft'){ send('\x01'); return false; }       // ⌘←  line start (Ctrl-A)
+      if (e.key === 'ArrowRight'){ send('\x05'); return false; }      // ⌘→  line end (Ctrl-E)
+      if (k === 'a'){ term.selectAll(); return false; }               // ⌘A  select all screen text
+      if (k === 'k'){ term.clear(); return false; }                   // ⌘K  clear scrollback
+      if (k === 'c' && !term.hasSelection()){ send('\x03'); return false; } // ⌘C with nothing selected → interrupt
+      return true;                                                    // ⌘C (copy) / ⌘V (paste) / ⌘W etc. → browser
+    }
+    if (e.altKey && !e.metaKey && !e.ctrlKey){                          // explicit, so it never depends on keyCode
+      if (e.key === 'Backspace'){ send('\x1b\x7f'); return false; }    // ⌥⌫  delete word (ESC DEL)
+      if (e.key === 'ArrowLeft'){ send('\x1bb'); return false; }        // ⌥←  word back (ESC b)
+      if (e.key === 'ArrowRight'){ send('\x1bf'); return false; }       // ⌥→  word forward (ESC f)
+    }
+    if (e.shiftKey && e.key === 'Enter'){ send('\x1b\r'); return false; } // ⇧↩ newline in claude, like ⌥↩
+    return true;
+  });
   $('term').innerHTML = ''; term.open($('term'));
   termFit.fit();
   connectTerminal();
