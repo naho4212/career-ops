@@ -562,7 +562,7 @@ function render(){
       <td class="c-role"><span title="${esc(a.url)}"><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.role)}</a></span></td>
       <td class="c-score" style="color:var(--faint)"></td>
       <td class="c-status"><span class="pill" style="color:${COLOR.Queued};border-color:${COLOR.Queued}">Queued</span></td>
-      <td class="c-act"><button class="act" data-act="drop" title="Drop from data/pipeline.md before it is evaluated">Skip</button></td></tr>`;
+      <td class="c-act"><button class="act primary" data-act="eval" title="Evaluate this posting now (Claude, headless)">Evaluate</button><button class="act" data-act="drop" title="Drop from data/pipeline.md before it is evaluated">Skip</button></td></tr>`;
     return `<tr class="${closed?'closed':''} ${i===cursor?'sel':''}" data-i="${i}">
       <td class="c-num">${a.num}</td>
       <td class="c-date">${esc(a.date)}</td>
@@ -588,6 +588,10 @@ function render(){
     tr.addEventListener('mousedown', ()=>{ cursor=+tr.dataset.i; paintCursor(); followDrawer(); });
     tr.querySelector('[data-act="report"]')?.addEventListener('click', ()=>openReport(a));
     tr.querySelector('[data-act="drop"]')?.addEventListener('click', ()=>dropQueued(a));
+    tr.querySelector('[data-act="eval"]')?.addEventListener('click', ()=>{
+      if (running) return toast(`${running} is still running — wait for it to finish`, null, true);
+      showView('tools'); runTool('evaluate', { url:a.url, label:`Evaluate · ${a.company}` });
+    });
     tr.querySelector('[data-act="set"]')?.addEventListener('change', e=>{
       if (e.target.value) setStatus(a, e.target.value);
     });
@@ -917,18 +921,20 @@ function classify(raw){
 }
 
 let running = null;
-function runTool(key){
+function runTool(key, params){
   if (running) return;
   running = key;
   const con = $('console'); con.innerHTML = '';
-  const tool = state.tools.find(t=>t.key===key);
+  const tool = state.tools.find(t=>t.key===key) || { key, label: params?.label || key };
+  if (params?.label) tool.label = params.label;
   const t0 = performance.now();
   const counts = { ok:0, warn:0, err:0 };
   let lastCls = 'gap';
   $('tool-head').innerHTML = `<span class="spin"></span><b>${esc(tool.label)}</b><span class="muted">running…</span>`;
   $('tool-foot').hidden = true;
   document.querySelectorAll('.tool').forEach(b=>{ b.disabled = true; b.setAttribute('aria-current', String(b.dataset.k===key)); });
-  const es = new EventSource('/api/tool?name='+encodeURIComponent(key));
+  const qs = params?.url ? '&url='+encodeURIComponent(params.url) : '';
+  const es = new EventSource('/api/tool?name='+encodeURIComponent(key)+qs);
   const push = (raw) => {
     const { cls, text } = classify(raw);
     if (cls === 'gap' && (lastCls === 'gap' || lastCls === 'rule' || lastCls === 'head' || !con.childElementCount)) return;
@@ -969,7 +975,7 @@ document.addEventListener('keydown', e=>{
   if (e.key === 'j' || e.key === 'ArrowDown'){ e.preventDefault(); cursor=Math.min(cursor+1,view.length-1); paintCursor(); followDrawer(); }
   else if (e.key === 'k' || e.key === 'ArrowUp'){ e.preventDefault(); cursor=Math.max(cursor-1,0); paintCursor(); followDrawer(); }
   else if (e.key === 's' && a){ a.queued ? dropQueued(a) : setStatus(a,'SKIP'); }
-  else if (e.key === 'Enter' && a && !a.queued){ openReport(a); }
+  else if (e.key === 'Enter' && a){ a.queued ? document.querySelector(`#rows tr[data-i="${cursor}"] [data-act="eval"]`)?.click() : openReport(a); }
 });
 
 // Header sorting: first click ascending, click again to reverse. Clicking a

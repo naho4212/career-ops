@@ -605,6 +605,14 @@ const TOOLS = {
       'Run career-ops pipeline mode for data/pipeline.md: evaluate every pending `- [ ]` URL (auto-pipeline: report + tracker TSV), then run `node merge-tracker.mjs`. Print one line per URL as you finish it.'],
     blurb: 'Evaluate queued URLs with Claude (headless, may take minutes)',
   },
+  // Single-URL variant, driven from a Queued row's Evaluate button. Not listed
+  // in the Tools panel (it needs a url); argv is built per request.
+  evaluate: {
+    label: 'Evaluate', bin: 'claude', listed: false,
+    argv: ({ url }) => ['-p', '--dangerously-skip-permissions',
+      `Evaluate this JD with career-ops auto-pipeline: ${url}\nWrite the report and tracker TSV, run \`node merge-tracker.mjs\`, then mark this URL's line in data/pipeline.md as done (\`- [x]\`). Finish with one line: the score and the report path.`],
+    blurb: 'Evaluate one queued URL',
+  },
   verify: { label: 'Verify pipeline', argv: ['verify-pipeline.mjs'], blurb: 'Health-check the tracker' },
   merge: { label: 'Merge tracker', argv: ['merge-tracker.mjs'], blurb: 'Fold in pending TSV additions' },
   dedup: { label: 'Dedup tracker', argv: ['dedup-tracker.mjs'], blurb: 'Collapse duplicate rows' },
@@ -612,22 +620,27 @@ const TOOLS = {
   followup: { label: 'Follow-up cadence', argv: ['followup-cadence.mjs', '--summary'], blurb: 'Who is overdue a nudge' },
 };
 
-function streamTool(key, res) {
+function streamTool(key, res, params = {}) {
   const tool = TOOLS[key];
   if (!tool) {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     return res.end('Unknown tool');
   }
+  if (key === 'evaluate' && !/^https?:\/\//.test(params.url || '')) {
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    return res.end('evaluate needs a http(s) url');
+  }
+  const argv = typeof tool.argv === 'function' ? tool.argv(params) : tool.argv;
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
   });
   const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-  send('start', { label: tool.label });
+  send('start', { label: tool.label, params });
 
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^CLAUDE(CODE|_)/.test(k)));
-  const child = spawn(tool.bin || process.execPath, tool.argv, { cwd: ROOT, env });
+  const child = spawn(tool.bin || process.execPath, argv, { cwd: ROOT, env });
   const pump = (stream) => {
     let buf = '';
     stream.on('data', (chunk) => {
@@ -693,7 +706,7 @@ const server = http.createServer(async (req, res) => {
         pending: pipelinePending(),
         queued: readPending(),
         trackerMissing: Boolean(missing),
-        tools: Object.entries(TOOLS).map(([k, v]) => ({ key: k, label: v.label, blurb: v.blurb })),
+        tools: Object.entries(TOOLS).filter(([, v]) => v.listed !== false).map(([k, v]) => ({ key: k, label: v.label, blurb: v.blurb })),
       });
     }
 
@@ -765,7 +778,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url.pathname === '/api/tool') {
-      return streamTool(url.searchParams.get('name'), res);
+      return streamTool(url.searchParams.get('name'), res, { url: url.searchParams.get('url') || '' });
     }
 
     res.writeHead(404, { 'Content-Type': 'text/plain' });

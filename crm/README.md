@@ -24,9 +24,10 @@ step; it does not crash. Point it at another checkout with
 ## Queued (pre-evaluation)
 
 URLs still pending in `data/pipeline.md` show as **Queued** rows ahead of the
-tracker rows, with their own zone in the spine before Pending/Evaluated. The
-only action on a queued row is **Skip** (`s` key too), which drops the URL from
-`pipeline.md` so no tokens are spent evaluating it. Queued rows are not tracker
+tracker rows, with their own zone in the spine before Pending/Evaluated. Two
+actions: **Evaluate** (`Enter`) runs `auto-pipeline` for just that URL via the
+headless Claude CLI and streams into the Tools tab; **Skip** (`s`) drops the
+URL from `pipeline.md` so no tokens are spent on it. One tool runs at a time. Queued rows are not tracker
 rows: no number, score, report, or status change until they are evaluated.
 
 ## Row actions
