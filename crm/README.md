@@ -147,6 +147,12 @@ Why they cannot break each other:
   upstream update neither overwrites nor prunes it. If upstream ever ships a
   `crm/` path of its own, the updater's collision guard refuses loudly rather
   than clobbering.
+- The server checks on startup (and at most every 10 minutes) whether
+  `origin/main` is ahead of `HEAD`. If so it logs a line, the masthead shows
+  **CRM update · N commits behind**, and clicking it runs the **Update CRM**
+  tool: `git pull --ff-only origin main`. Fast-forward only, so it refuses
+  rather than merging if local commits exist; it never runs on its own.
+  Restart the server after a pull that touched `crm/server.mjs`.
 - `git pull` from this fork brings CRM changes plus whatever system version the
   fork was on. If you are already ahead of that via `update-system.mjs`, git
   keeps your newer system files; `crm/` merges cleanly because upstream never

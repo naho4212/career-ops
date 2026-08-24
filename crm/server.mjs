@@ -17,7 +17,7 @@
 import http from 'node:http';
 import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, statSync, readdirSync, createReadStream } from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -70,6 +70,27 @@ const TOKEN = crypto.randomBytes(16).toString('hex');
 
 const portArgIdx = process.argv.indexOf('--port');
 const PORT = portArgIdx > -1 ? Number(process.argv[portArgIdx + 1]) : 7788;
+
+// ── CRM update check ─────────────────────────────────────────────────
+// The CRM ships through this fork's `origin`, so "is there a newer CRM" is
+// "is origin/main ahead of HEAD". Fetch on startup and at most every 10 min
+// after; never pull automatically — the Update CRM tool does a --ff-only pull
+// when the user asks. Failures (offline, no remote) are silent: behind = 0.
+const crmUpdate = { behind: 0, checkedAt: 0, remote: '' };
+function git(args, ms = 8000) {
+  return new Promise((resolve) => execFile('git', args, { cwd: ROOT, timeout: ms }, (err, out) => resolve(err ? null : out.trim())));
+}
+async function checkCrmUpdate(force = false) {
+  if (!force && Date.now() - crmUpdate.checkedAt < 10 * 60 * 1000) return crmUpdate;
+  crmUpdate.checkedAt = Date.now();
+  if (!crmUpdate.remote) crmUpdate.remote = (await git(['remote', 'get-url', 'origin'])) || '';
+  if (!crmUpdate.remote) return crmUpdate;
+  if ((await git(['fetch', '--quiet', 'origin', 'main'], 15000)) === null) return crmUpdate;
+  const n = await git(['rev-list', '--count', 'HEAD..origin/main']);
+  crmUpdate.behind = Number(n) || 0;
+  if (crmUpdate.behind) console.log(`CRM update: origin/main is ${crmUpdate.behind} commit(s) ahead — run \`git pull\` (or Tools → Update CRM) and restart.`);
+  return crmUpdate;
+}
 
 // ── Canonical statuses ───────────────────────────────────────────────
 // states.yml is the shared source of truth for the writer (career-ops) and
@@ -649,6 +670,9 @@ const TOOLS = {
   dedup: { label: 'Dedup tracker', argv: ['dedup-tracker.mjs'], blurb: 'Collapse duplicate rows' },
   patterns: { label: 'Analyze patterns', argv: ['analyze-patterns.mjs', '--summary'], blurb: 'Rejection + targeting analysis' },
   followup: { label: 'Follow-up cadence', argv: ['followup-cadence.mjs', '--summary'], blurb: 'Who is overdue a nudge' },
+  // Fast-forward only: refuses rather than merging if the local branch has
+  // diverged, so it can never create a merge commit or touch local edits.
+  update: { label: 'Update CRM', bin: 'git', argv: ['pull', '--ff-only', 'origin', 'main'], blurb: 'git pull from the fork — restart the server after' },
 };
 
 function streamTool(key, res, params = {}) {
@@ -694,7 +718,10 @@ function streamTool(key, res, params = {}) {
   pump(child.stdout);
   pump(child.stderr);
 
-  child.on('close', (code) => { send('done', { code }); res.end(); });
+  child.on('close', (code) => {
+    if (key === 'update') crmUpdate.checkedAt = 0; // banner re-evaluates on the next /api/state
+    send('done', { code }); res.end();
+  });
   child.on('error', (err) => { send('line', `Failed to start: ${err.message}`); send('done', { code: 1 }); res.end(); });
   res.on('close', () => child.kill());
 }
@@ -747,6 +774,7 @@ const server = http.createServer(async (req, res) => {
         counts,
         pending: pipelinePending(),
         queued: readPending(),
+        crmUpdate: await checkCrmUpdate(),
         trackerMissing: Boolean(missing),
         tools: Object.entries(TOOLS).filter(([, v]) => v.listed !== false).map(([k, v]) => ({ key: k, label: v.label, blurb: v.blurb })),
       });
@@ -895,6 +923,7 @@ server.on('upgrade', (req, socket, head) => {
   });
 });
 
+checkCrmUpdate(true);
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`career-ops CRM  →  http://127.0.0.1:${PORT}`);
   console.log(`Tracker: ${path.relative(process.cwd(), TRACKER)}`);

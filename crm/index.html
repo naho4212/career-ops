@@ -80,6 +80,11 @@ body{
 .item .x{margin-left:auto}
 .list .empty{padding:18px}
 .hint{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.04em}
+.notice{
+  background:transparent;border:1px solid var(--s-applied);border-radius:2px;color:var(--s-applied);
+  padding:3px 10px;margin-right:14px;cursor:pointer;font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;
+}
+.notice:hover{background:var(--raised)}
 
 /* ── Attrition spine (signature) ────────────────────── */
 /* Three zones — live / pending / closed — sized by real counts. Closed is the
@@ -339,6 +344,7 @@ select.act{padding:3px 4px}
     <button class="tab" role="tab" data-view="term" aria-selected="false">Terminal</button>
   </div>
   <div class="spacer"></div>
+  <button class="notice" id="crm-notice" hidden></button>
   <div class="hint">/ search &nbsp;·&nbsp; j k move &nbsp;·&nbsp; s skip &nbsp;·&nbsp; enter report</div>
 </header>
 
@@ -537,6 +543,9 @@ async function load(){
   if (q.length) state.counts.Queued = q.length;
   state.applications = q.concat(state.applications);
   renderSpine(); render();
+  const u = state.crmUpdate || {};
+  $('crm-notice').hidden = !u.behind;
+  if (u.behind) $('crm-notice').textContent = `CRM update · ${u.behind} commit${u.behind===1?'':'s'} behind · click to pull`;
 }
 function hostOf(u){ try { return new URL(u).host.replace(/^(jobs|boards|job-boards|www)\./,''); } catch { return u; } }
 
@@ -686,6 +695,7 @@ function showView(v){
   try { localStorage.setItem('crm.view', v); } catch {}
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>showView(t.dataset.view)));
+$('crm-notice').addEventListener('click', ()=>{ showView('tools'); runTool('update'); });
 
 // ── Inputs ──────────────────────────────────────────────
 let inputs = null;
