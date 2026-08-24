@@ -146,7 +146,7 @@ function insideRoot(p) {
  * The pdf-index's report column is often blank on older rows, which is why
  * the fallbacks exist. Returns a ROOT-relative path or null.
  */
-function resolvePdf(row, meta) {
+function explicitPdf(row, meta) {
   const num = reportNum(row);
   if (num != null && existsSync(PDF_INDEX)) {
     for (const line of readFileSync(PDF_INDEX, 'utf8').split('\n')) {
@@ -163,6 +163,30 @@ function resolvePdf(row, meta) {
     const abs = path.resolve(ROOT, m[1]);
     if (insideRoot(abs)) return path.relative(ROOT, abs);
   }
+  return null;
+}
+
+/**
+ * PDFs some report names explicitly, keyed by ROOT-relative path. A file one
+ * report claims is that report's CV; it must never be handed to a sibling row
+ * at the same company by the slug fallback (Headway #76 was showing #335's).
+ */
+function claimedPdfs(rows) {
+  const claimed = new Map();
+  for (const r of rows) {
+    const rel = explicitPdf(r, reportMeta(r));
+    if (rel) claimed.set(rel, r.num);
+  }
+  return claimed;
+}
+
+function resolvePdf(row, meta, claimed = new Map()) {
+  const explicit = explicitPdf(row, meta);
+  if (explicit) return explicit;
+  // Slug fallback runs only when the tracker says a CV was generated for this
+  // row (PDF column ✅); a ❌ row with a same-company PDF lying around is
+  // exactly the mis-attribution case.
+  if (!/✅/.test(row.pdf || '')) return null;
   // Slug fallback. A company can have several tracked roles, so only accept a
   // PDF dated on or after this row's evaluation: a CV generated earlier was
   // tailored for a different posting and is the wrong file to upload.
@@ -178,6 +202,7 @@ function resolvePdf(row, meta) {
           return { f, stamp };
         })
         .filter((h) => !since || h.stamp >= since)
+        .filter((h) => !claimed.has(path.join('output', h.f)) || claimed.get(path.join('output', h.f)) === row.num)
         .sort((a, b) => (a.stamp < b.stamp ? 1 : -1));
       if (hits.length) return path.join('output', hits[0].f);
     }
@@ -359,10 +384,13 @@ const server = http.createServer(async (req, res) => {
       const counts = {};
       for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1;
       return json(res, 200, {
-        applications: rows.map(({ raw, line, ...r }) => {
-          const meta = reportMeta(r);
-          return { ...r, url: meta.url, pdf: resolvePdf(r, meta) };
-        }),
+        applications: (() => {
+          const claimed = claimedPdfs(rows);
+          return rows.map(({ raw, line, ...r }) => {
+            const meta = reportMeta(r);
+            return { ...r, url: meta.url, pdf: resolvePdf(r, meta, claimed) };
+          });
+        })(),
         states: STATE_LIST,
         counts,
         pending: pipelinePending(),
@@ -393,7 +421,7 @@ const server = http.createServer(async (req, res) => {
     // View inline (default) or force a browser download (?download=1).
     if (url.pathname === '/api/pdf') {
       const row = rowByNum(url);
-      const rel = row && resolvePdf(row, reportMeta(row));
+      const rel = row && resolvePdf(row, reportMeta(row), claimedPdfs(readTracker().rows));
       if (!rel) return json(res, 404, { error: 'No PDF on file for this role' });
       const abs = path.join(ROOT, rel);
       const disp = url.searchParams.get('download') ? 'attachment' : 'inline';
@@ -411,7 +439,7 @@ const server = http.createServer(async (req, res) => {
       const what = url.searchParams.get('what');
       if (what !== 'pdf' && what !== 'report') return json(res, 400, { error: 'what must be pdf or report' });
       const meta = reportMeta(row);
-      const rel = what === 'report' ? (meta.reportFile && path.relative(ROOT, meta.reportFile)) : resolvePdf(row, meta);
+      const rel = what === 'report' ? (meta.reportFile && path.relative(ROOT, meta.reportFile)) : resolvePdf(row, meta, claimedPdfs(readTracker().rows));
       if (!rel) return json(res, 404, { error: `No ${what} on file for this role` });
       const abs = path.join(ROOT, rel);
       return json(res, 200, { ok: true, path: abs, revealed: reveal(abs) });
