@@ -19,6 +19,15 @@ root one is a system-layer file the updater replaces. Skipping `npm install`
 is fine — everything but the Terminal tab works, and that tab says what to
 run. `node-pty` needs a C toolchain on first install (Xcode CLT on macOS).
 
+The `crm` postinstall also runs
+`git update-index --skip-worktree interview-prep/story-bank.md`. That file is
+the one user-layer file `.gitignore` cannot cover — upstream tracks it as an
+empty template — and it fills with your interview stories over time. Marking
+it skip-worktree means `git add .` / `git commit -a` never stage it. If an
+update ever changes the template upstream and `git pull` complains, run
+`git update-index --no-skip-worktree interview-prep/story-bank.md`, stash,
+pull, pop, and re-mark it.
+
 Binds to `127.0.0.1` only. The tracker holds recruiter names, phone numbers,
 and comp targets, so it never goes on the network. Before the first status
 write of each run it copies the tracker to `data/applications.md.crm-{date}.bak`.
