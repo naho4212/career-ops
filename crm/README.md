@@ -37,6 +37,11 @@ run `--dangerously-skip-permissions` because `-p` mode cannot answer prompts;
 an interactive session can, which is what `apply` mode (stop before Submit)
 and hands-on CV edits need.
 
+The three headless actions — **Run pipeline**, a queued row's **Evaluate**,
+and the report's **Generate CV** — each have an **in terminal** alternative
+that switches to this tab and types the equivalent interactive `claude "…"`
+command, unsubmitted, so you can read or edit it and press Enter.
+
 Security: the server binds to 127.0.0.1 and the upgrade to `/term` requires
 both a matching `Origin` and a per-launch token embedded in the served page,
 so no other page or process on the machine can open a shell through it. One
