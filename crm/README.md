@@ -130,6 +130,36 @@ never lands. First write per file per server run leaves `{file}.crm-{date}.bak`.
 | Pipeline inbox | `data/pipeline.md` | Queue a posting URL (dedup on URL); drop it. Evaluation still runs via `/career-ops pipeline` in the AI CLI — `pipeline` is a mode, not a script. |
 | Blacklist | `data/blacklist.md` | Add / remove companies. File is created on first add; `scan.mjs` and the evaluate/apply gates already honour it. |
 
+## Already running career-ops? Adopt the fork in place
+
+Your CV, profile, portals, tracker, reports, PDFs and interview prep are all
+untracked or gitignored, so they are not in git history and a branch switch
+cannot touch them. Point your existing checkout at this fork:
+
+```bash
+cd career-ops
+git stash                                   # parks tracked edits (e.g. story-bank.md); untracked data is untouched
+git remote rename origin upstream           # keep santifer's remote around, renamed
+git remote add origin https://github.com/naho4212/career-ops.git
+git fetch origin main
+git checkout -B main origin/main            # tracked tree now = this fork; your data layer is as it was
+git stash pop                               # bring the parked edits back
+npm install && (cd crm && npm install)
+node crm/server.mjs
+```
+
+What changes: the system files (modes, scripts, templates) now come from
+this fork's snapshot, which may be a different career-ops version than you
+had. That is fine — the next `node update-system.mjs check` reconciles
+against upstream exactly as before, because the updater is hard-wired to
+santifer's repo, not to `origin`. Your own auto-update commits are dropped
+from the branch; nothing in them was yours.
+
+If `git stash pop` reports a conflict it is almost certainly
+`interview-prep/story-bank.md` (your stories vs the upstream template): keep
+yours (`git checkout --theirs interview-prep/story-bank.md`, then
+`git add` it, then `git update-index --skip-worktree` it).
+
 ## Two independent update channels
 
 This fork receives updates from two places, and they do not collide:
