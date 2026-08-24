@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Career Ops CRM</title>
+<style>
+:root{
+  --base:#0D1014; --panel:#141920; --raised:#1A212A; --line:#222A34;
+  --text:#D7DEE6; --dim:#79848F; --faint:#48525D;
+  --live:#E9B44C;
+  --s-evaluated:#8C97A4; --s-applied:#E9B44C; --s-responded:#5EA9E8;
+  --s-interview:#4FD1A5; --s-offer:#B08BF8; --s-rejected:#E8636F;
+  --s-discarded:#2E3641; --s-skip:#39434E;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Inter,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--base);color:var(--text);
+  font-family:var(--sans);font-size:13px;line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+/* ── Header ─────────────────────────────────────────── */
+.masthead{
+  display:flex;align-items:baseline;gap:18px;
+  padding:14px 20px 12px;border-bottom:1px solid var(--line);flex:none;
+}
+.wordmark{
+  font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--text);
+}
+.tally{font-family:var(--mono);font-size:11.5px;color:var(--dim);letter-spacing:.02em}
+.tally b{color:var(--live);font-weight:600}
+.masthead .spacer{margin-left:auto}
+.hint{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.04em}
+
+/* ── Attrition spine (signature) ────────────────────── */
+/* Three zones — live / pending / closed — sized by real counts. Closed is the
+   overwhelming majority and is rendered darkest on purpose: the eye should
+   land on what is still in play, not on the sediment. */
+.spine{padding:14px 20px 12px;border-bottom:1px solid var(--line);flex:none}
+.zones{display:flex;gap:14px;align-items:stretch;height:34px}
+.zone{display:flex;flex-direction:column;gap:5px;min-width:0}
+.bands{display:flex;gap:2px;height:20px}
+.band{
+  border:0;padding:0;border-radius:1px;cursor:pointer;min-width:3px;
+  position:relative;transition:transform .12s ease,filter .12s ease;
+}
+.band:hover,.band:focus-visible{transform:translateY(-2px);filter:brightness(1.35);outline:none}
+.band[aria-pressed="true"]{box-shadow:0 0 0 1.5px var(--text)}
+.zone-label{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--faint);white-space:nowrap;
+}
+.legend{display:flex;flex-wrap:wrap;gap:4px;margin-top:11px}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;
+  background:transparent;border:1px solid var(--line);border-radius:2px;
+  padding:3px 8px;cursor:pointer;color:var(--dim);
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.03em;
+}
+.chip:hover{border-color:var(--faint);color:var(--text)}
+.chip[aria-pressed="true"]{border-color:var(--text);color:var(--text);background:var(--raised)}
+.chip .dot{width:7px;height:7px;border-radius:1px;flex:none}
+.chip .n{color:var(--faint)}
+.chip[aria-pressed="true"] .n{color:var(--dim)}
+
+/* ── Body ───────────────────────────────────────────── */
+.body{display:flex;flex:1;min-height:0}
+.rail{
+  width:216px;flex:none;border-right:1px solid var(--line);
+  display:flex;flex-direction:column;min-height:0;background:var(--panel);
+}
+.rail-head{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--faint);padding:13px 14px 8px;
+}
+.tool{
+  display:block;width:100%;text-align:left;background:transparent;border:0;
+  border-left:2px solid transparent;padding:7px 14px;cursor:pointer;color:var(--text);
+  font-family:var(--sans);font-size:12px;
+}
+.tool:hover{background:var(--raised);border-left-color:var(--faint)}
+.tool:disabled{opacity:.4;cursor:default}
+.tool small{display:block;color:var(--faint);font-size:10.5px;margin-top:1px}
+.console{
+  flex:1;min-height:0;overflow:auto;margin:10px 0 0;padding:10px 14px;
+  border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:10.5px;line-height:1.55;color:var(--dim);
+  white-space:pre-wrap;word-break:break-word;
+}
+.console .ok{color:var(--s-interview)}
+.console .warn{color:var(--s-applied)}
+.console .err{color:var(--s-rejected)}
+
+.main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.toolbar{display:flex;gap:10px;align-items:center;padding:11px 20px;border-bottom:1px solid var(--line);flex:none}
+#q{
+  flex:1;background:var(--panel);border:1px solid var(--line);border-radius:2px;
+  color:var(--text);padding:6px 10px;font-family:var(--mono);font-size:12px;
+}
+#q:focus{outline:none;border-color:var(--faint)}
+#q::placeholder{color:var(--faint)}
+.count{font-family:var(--mono);font-size:11px;color:var(--faint);white-space:nowrap}
+
+/* ── Table ──────────────────────────────────────────── */
+.scroll{flex:1;overflow:auto;min-height:0}
+/* Fixed layout keeps the action column on screen at any width — with auto
+   layout the role text pushes Skip past the right edge. */
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+thead th{
+  position:sticky;top:0;background:var(--base);z-index:2;
+  text-align:left;font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--faint);font-weight:500;
+  padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;
+}
+tbody td{padding:7px 10px;border-bottom:1px solid rgba(34,42,52,.55);vertical-align:top}
+tbody tr{cursor:default}
+tbody tr:hover{background:var(--panel)}
+tbody tr.sel{background:var(--raised);box-shadow:inset 2px 0 0 var(--text)}
+/* Closed rows recede — they are 68% of the table and should not compete. */
+tbody tr.closed td{color:var(--faint)}
+tbody tr.closed:hover td{color:var(--dim)}
+.c-num{font-family:var(--mono);font-size:11px;color:var(--faint);width:46px}
+.c-date{font-family:var(--mono);font-size:11px;color:var(--faint);width:92px;white-space:nowrap}
+.c-co{font-weight:600;letter-spacing:-.005em;width:148px}
+.c-co,.c-role{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.c-role{color:var(--dim)}
+/* Wide enough for "SCORE ▲" — at 54px the sort arrow was clipped. */
+.c-score{font-family:var(--mono);font-size:12px;width:66px;text-align:right;font-variant-numeric:tabular-nums}
+.c-status{width:100px}
+/* Fits Report + the Status select together; below ~176px the select's chevron
+   gets cut off on rows that have a report. */
+.c-act{width:176px;text-align:right;white-space:nowrap}
+/* Sortable headers. The button inherits the th's type styling so the header
+   still reads as a label, not a control, until you hover it. */
+/* The whole heading must be the click target. Giving the button width:100% is
+   not enough — the th's own padding stays dead, so a click just beside the
+   label does nothing and the control reads as broken. Move the padding onto
+   the button instead so it fills the cell edge to edge. */
+thead th[data-sort]{padding:0}
+.sortbtn{
+  background:none;border:0;cursor:pointer;font:inherit;color:inherit;
+  letter-spacing:inherit;text-transform:inherit;
+  width:100%;text-align:inherit;padding:8px 10px;
+}
+.sortbtn:hover{color:var(--dim)}
+thead th[aria-sort] .sortbtn{color:var(--text)}
+.arrow{margin-left:4px;font-size:8px;opacity:0}
+thead th[aria-sort] .arrow{opacity:1}
+.pill{
+  display:inline-block;padding:2px 7px;border-radius:2px;
+  font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  border:1px solid;
+}
+.act{
+  background:transparent;border:1px solid var(--line);border-radius:2px;color:var(--dim);
+  padding:3px 8px;cursor:pointer;font-family:var(--mono);font-size:10.5px;margin-left:4px;
+}
+.act:hover{border-color:var(--text);color:var(--text)}
+.act.primary{border-color:var(--faint);color:var(--text)}
+/* Status stays visible on every row — it is the primary action. Report is
+   secondary and only surfaces on the row you are pointing at. */
+tbody tr:not(:hover):not(.sel) .act[data-act="report"]{opacity:0}
+tbody tr:focus-within .act{opacity:1}
+select.act{padding:3px 4px}
+
+/* ── Report drawer ──────────────────────────────────── */
+.drawer{
+  position:fixed;top:0;right:0;bottom:0;width:min(660px,92vw);
+  background:var(--panel);border-left:1px solid var(--line);
+  transform:translateX(101%);transition:transform .22s cubic-bezier(.4,0,.2,1);
+  display:flex;flex-direction:column;z-index:20;
+}
+.drawer.open{transform:none}
+.drawer-head{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line);flex:none}
+.drawer-head h2{margin:0;font-size:13px;font-weight:600;letter-spacing:-.01em}
+.drawer-head .path{font-family:var(--mono);font-size:10px;color:var(--faint);margin-left:auto}
+.drawer-body{overflow:auto;padding:18px;font-size:12.5px;line-height:1.65}
+.drawer-body h1,.drawer-body h2,.drawer-body h3{
+  font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--live);
+  margin:22px 0 7px;font-weight:600;
+}
+.drawer-body h1:first-child{margin-top:0}
+.drawer-body code{font-family:var(--mono);font-size:11px;background:var(--raised);padding:1px 4px;border-radius:2px}
+.drawer-body ul{padding-left:18px;margin:7px 0}
+.drawer-body a{color:var(--s-responded)}
+.drawer-body p{margin:7px 0;color:var(--dim)}
+.drawer-body strong{color:var(--text)}
+
+/* ── Toast ──────────────────────────────────────────── */
+.toast{
+  position:fixed;left:50%;bottom:26px;transform:translate(-50%,140%);
+  background:var(--raised);border:1px solid var(--line);border-radius:3px;
+  padding:9px 12px;display:flex;align-items:center;gap:12px;z-index:30;
+  transition:transform .2s cubic-bezier(.4,0,.2,1);font-size:12px;
+  box-shadow:0 8px 26px rgba(0,0,0,.5);
+}
+.toast.show{transform:translate(-50%,0)}
+.toast.err{border-color:var(--s-rejected)}
+.toast button{
+  background:transparent;border:1px solid var(--faint);border-radius:2px;color:var(--text);
+  padding:3px 9px;cursor:pointer;font-family:var(--mono);font-size:10.5px;
+}
+.empty{padding:52px 20px;text-align:center;color:var(--faint)}
+.empty b{display:block;color:var(--dim);margin-bottom:5px;font-size:13px}
+:focus-visible{outline:1.5px solid var(--text);outline-offset:1px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (max-width:860px){.rail{display:none}.c-date,.c-num{display:none}}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wordmark">Career Ops</div>
+  <div class="tally" id="tally">loading…</div>
+  <div class="spacer"></div>
+  <div class="hint">/ search &nbsp;·&nbsp; j k move &nbsp;·&nbsp; s skip &nbsp;·&nbsp; enter report</div>
+</header>
+
+<section class="spine">
+  <div class="zones" id="zones"></div>
+  <div class="legend" id="legend"></div>
+</section>
+
+<div class="body">
+  <aside class="rail">
+    <div class="rail-head">Tools</div>
+    <div id="tools"></div>
+    <div class="console" id="console">Idle.</div>
+  </aside>
+
+  <main class="main">
+    <div class="toolbar">
+      <input id="q" type="search" placeholder="Filter by company, role, or note…" autocomplete="off">
+      <span class="count" id="count"></span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr id="head">
+          <th class="c-num"    data-sort="num"><button class="sortbtn">#<span class="arrow"></span></button></th>
+          <th class="c-date"   data-sort="date"><button class="sortbtn">Date<span class="arrow"></span></button></th>
+          <th class="c-co"     data-sort="company"><button class="sortbtn">Company<span class="arrow"></span></button></th>
+          <th                  data-sort="role"><button class="sortbtn">Role<span class="arrow"></span></button></th>
+          <th class="c-score"  data-sort="score"><button class="sortbtn">Score<span class="arrow"></span></button></th>
+          <th class="c-status" data-sort="status"><button class="sortbtn">Status<span class="arrow"></span></button></th>
+          <th class="c-act"></th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="empty" id="empty" hidden><b>Nothing matches</b>Clear the filter or pick another status band.</div>
+    </div>
+  </main>
+</div>
+
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <h2 id="drawer-title">Report</h2>
+    <span class="path" id="drawer-path"></span>
+    <button class="act" id="drawer-close">Close</button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+</aside>
+
+<div class="toast" id="toast"><span id="toast-msg"></span><button id="toast-undo" hidden>Undo</button></div>
+
+<script>
+const COLOR = {
+  Evaluated:'var(--s-evaluated)', Applied:'var(--s-applied)', Responded:'var(--s-responded)',
+  Interview:'var(--s-interview)', Offer:'var(--s-offer)', Rejected:'var(--s-rejected)',
+  Discarded:'var(--s-discarded)', SKIP:'var(--s-skip)',
+};
+const ZONES = [
+  { label:'In play',  members:['Applied','Responded','Interview','Offer'] },
+  { label:'Pending',  members:['Evaluated'] },
+  { label:'Closed',   members:['Rejected','Discarded','SKIP'] },
+];
+const CLOSED = new Set(['Rejected','Discarded','SKIP']);
+
+let state = { applications:[], states:[], counts:{}, pending:0, tools:[] };
+let active = new Set();   // status filter
+let cursor = 0;
+let view = [];
+let sort = { key:null, dir:1 };  // dir 1 = A→Z / low→high, -1 = reverse
+
+// Scores are "4.6/5" or "N/A"; unscored rows sort below everything rather than
+// landing in the middle as NaN. Text compares are case-insensitive so "dbt Labs"
+// files next to "DoorDash" instead of after every capitalised name.
+const scoreOf = (a) => { const n = parseFloat(a.score); return isNaN(n) ? -Infinity : n; };
+const SORTERS = {
+  num:     (a,b) => a.num - b.num,
+  date:    (a,b) => String(a.date||'').localeCompare(String(b.date||'')),
+  company: (a,b) => String(a.company||'').localeCompare(String(b.company||''), undefined, {sensitivity:'base'}),
+  role:    (a,b) => String(a.role||'').localeCompare(String(b.role||''), undefined, {sensitivity:'base'}),
+  score:   (a,b) => scoreOf(a) - scoreOf(b),
+  status:  (a,b) => String(a.status||'').localeCompare(String(b.status||'')),
+};
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s??'').replace(/[&<>"']/g, (c) =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function load(){
+  const r = await fetch('/api/state');
+  state = await r.json();
+  renderSpine(); render();
+}
+
+function renderSpine(){
+  const total = state.applications.length;
+  const live = ZONES[0].members.reduce((n,s)=>n+(state.counts[s]||0),0);
+  $('tally').innerHTML =
+    `${total} evaluated · <b>${live} in play</b> · ${state.pending} queued for evaluation`;
+
+  const max = Math.max(1, ...ZONES.map(z => z.members.reduce((n,s)=>n+(state.counts[s]||0),0)));
+  $('zones').innerHTML = ZONES.map(z => {
+    const sum = z.members.reduce((n,s)=>n+(state.counts[s]||0),0);
+    const bands = z.members.filter(s=>state.counts[s]).map(s=>{
+      const n = state.counts[s];
+      return `<button class="band" data-s="${esc(s)}" title="${esc(s)} — ${n}"
+        aria-pressed="${active.has(s)}" aria-label="${esc(s)}, ${n} roles"
+        style="flex:${n};background:${COLOR[s]}"></button>`;
+    }).join('');
+    // Zone widths are proportional so "Closed" visibly dwarfs "In play".
+    return `<div class="zone" style="flex:${Math.max(sum,max*0.14)}">
+      <div class="bands">${bands||'<div style="flex:1"></div>'}</div>
+      <div class="zone-label">${z.label} · ${sum}</div></div>`;
+  }).join('');
+
+  $('legend').innerHTML = Object.keys(COLOR).filter(s=>state.counts[s]).map(s=>
+    `<button class="chip" data-s="${esc(s)}" aria-pressed="${active.has(s)}">
+      <span class="dot" style="background:${COLOR[s]}"></span>${esc(s)}
+      <span class="n">${state.counts[s]}</span></button>`).join('');
+
+  document.querySelectorAll('.band,.chip').forEach(el =>
+    el.addEventListener('click', () => toggle(el.dataset.s)));
+}
+
+function toggle(s){
+  active.has(s) ? active.delete(s) : active.add(s);
+  cursor = 0; renderSpine(); render();
+}
+
+function render(){
+  const q = $('q').value.trim().toLowerCase();
+  view = state.applications.filter(a=>{
+    if (active.size && !active.has(a.status)) return false;
+    if (!q) return true;
+    return (a.company+' '+a.role+' '+a.notes).toLowerCase().includes(q);
+  });
+  if (sort.key) view.sort((a,b)=>SORTERS[sort.key](a,b)*sort.dir);
+  cursor = Math.min(cursor, Math.max(0, view.length-1));
+
+  $('count').textContent = `${view.length} of ${state.applications.length}`;
+  $('empty').hidden = view.length > 0;
+  // Distinguish "filter hid everything" from "nothing tracked yet" so a fresh
+  // clone tells the user what to do next instead of suggesting they clear a filter.
+  $('empty').innerHTML = state.applications.length === 0
+    ? '<b>No applications tracked yet</b>Paste a job URL into your AI CLI to evaluate it, or run <code>scan</code> from the Tools panel. Rows appear here as <code>data/applications.md</code> fills in.'
+    : '<b>Nothing matches</b>Clear the filter or pick another status band.';
+
+  const opts = state.states.map(s=>s.label);
+  $('rows').innerHTML = view.map((a,i)=>{
+    const closed = CLOSED.has(a.status);
+    const scoreDim = (!a.score || a.score==='N/A') ? 'var(--faint)'
+      : parseFloat(a.score) >= 4 ? 'var(--live)' : 'var(--dim)';
+    return `<tr class="${closed?'closed':''} ${i===cursor?'sel':''}" data-i="${i}">
+      <td class="c-num">${a.num}</td>
+      <td class="c-date">${esc(a.date)}</td>
+      <td class="c-co">${esc(a.company)}</td>
+      <td class="c-role"><span title="${esc(a.notes)}">${esc(a.role)}</span></td>
+      <td class="c-score" style="color:${scoreDim}">${esc((a.score||'').replace('/5',''))}</td>
+      <td class="c-status"><span class="pill" style="color:${COLOR[a.status]||'var(--dim)'};
+        border-color:${COLOR[a.status]||'var(--line)'}">${esc(a.status)}</span></td>
+      <td class="c-act">
+        ${a.report && a.report!=='—' ? `<button class="act" data-act="report">Report</button>`:''}
+        <select class="act primary" data-act="set" aria-label="Change status for ${esc(a.company)}">
+          <option value="">Status…</option>
+          ${opts.filter(o=>o!==a.status).map(o=>`<option>${esc(o)}</option>`).join('')}
+        </select>
+      </td></tr>`;
+  }).join('');
+
+  $('rows').querySelectorAll('tr').forEach(tr=>{
+    const a = view[+tr.dataset.i];
+    tr.addEventListener('mousedown', ()=>{ cursor=+tr.dataset.i; paintCursor(); });
+    tr.querySelector('[data-act="report"]')?.addEventListener('click', ()=>openReport(a));
+    tr.querySelector('[data-act="set"]')?.addEventListener('change', e=>{
+      if (e.target.value) setStatus(a, e.target.value);
+    });
+  });
+}
+
+function paintCursor(){
+  $('rows').querySelectorAll('tr').forEach((tr,i)=>tr.classList.toggle('sel', i===cursor));
+  $('rows').querySelectorAll('tr')[cursor]?.scrollIntoView({block:'nearest'});
+}
+
+async function setStatus(a, status, isUndo){
+  const prev = a.status;
+  const r = await fetch('/api/status',{
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({num:a.num, company:a.company, role:a.role, status}),
+  });
+  const out = await r.json();
+  if (!out.ok) return toast(out.error, null, true);
+
+  // Keep local state in step rather than refetching the whole tracker.
+  state.counts[prev] = (state.counts[prev]||1)-1;
+  state.counts[status] = (state.counts[status]||0)+1;
+  a.status = status;
+  renderSpine(); render();
+
+  if (isUndo) return toast(`${a.company} back to ${prev}`);
+  toast(`${a.company} → ${status}`, ()=>setStatus(a, prev, true));
+}
+
+let toastTimer;
+function toast(msg, undo, isErr){
+  const t = $('toast');
+  $('toast-msg').textContent = msg;
+  t.classList.toggle('err', !!isErr);
+  const btn = $('toast-undo');
+  btn.hidden = !undo;
+  btn.onclick = () => { t.classList.remove('show'); undo?.(); };
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), undo?7000:3200);
+}
+
+// Minimal markdown — reports are trusted local files, but escape first anyway.
+function md(src){
+  return esc(src)
+    .replace(/^### (.*)$/gm,'<h3>$1</h3>')
+    .replace(/^## (.*)$/gm,'<h2>$1</h2>')
+    .replace(/^# (.*)$/gm,'<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/^[-*] (.*)$/gm,'<li>$1</li>')
+    .replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g,'<ul>$1</ul>')
+    .replace(/^(?!<[hulc])(.+)$/gm,'<p>$1</p>');
+}
+
+async function openReport(a){
+  const d = $('drawer');
+  $('drawer-title').textContent = `${a.company} — ${a.role}`;
+  $('drawer-body').innerHTML = '<p>Loading…</p>';
+  d.classList.add('open'); d.setAttribute('aria-hidden','false');
+  const r = await fetch('/api/report?num='+a.num);
+  const out = await r.json();
+  $('drawer-path').textContent = out.path || '';
+  $('drawer-body').innerHTML = out.markdown
+    ? md(out.markdown)
+    : `<p>${esc(out.error||'No report on file.')}</p>`;
+}
+function closeDrawer(){
+  $('drawer').classList.remove('open');
+  $('drawer').setAttribute('aria-hidden','true');
+}
+
+// ── Tools ───────────────────────────────────────────────
+function renderTools(){
+  $('tools').innerHTML = state.tools.map(t=>
+    `<button class="tool" data-k="${esc(t.key)}">${esc(t.label)}<small>${esc(t.blurb)}</small></button>`
+  ).join('');
+  $('tools').querySelectorAll('.tool').forEach(b=>
+    b.addEventListener('click',()=>runTool(b.dataset.k)));
+}
+
+function runTool(key){
+  const con = $('console');
+  con.textContent = '';
+  document.querySelectorAll('.tool').forEach(b=>b.disabled=true);
+  const es = new EventSource('/api/tool?name='+encodeURIComponent(key));
+  const append = (txt, cls) => {
+    const s = document.createElement('span');
+    if (cls) s.className = cls;
+    s.textContent = txt + '\n';
+    con.appendChild(s); con.scrollTop = con.scrollHeight;
+  };
+  es.addEventListener('start', e => append('› ' + JSON.parse(e.data).label + '\n'));
+  es.addEventListener('line', e => {
+    const l = JSON.parse(e.data);
+    append(l, /✅|OK|added/i.test(l) ? 'ok' : /⚠|warn/i.test(l) ? 'warn' : /error|❌|fail/i.test(l) ? 'err' : '');
+  });
+  es.addEventListener('done', e => {
+    const { code } = JSON.parse(e.data);
+    append(code === 0 ? '\n✓ Finished' : `\n✗ Exited ${code}`, code === 0 ? 'ok' : 'err');
+    es.close();
+    document.querySelectorAll('.tool').forEach(b=>b.disabled=false);
+    load(); // tools mutate the tracker/pipeline — pull fresh numbers
+  });
+  es.onerror = () => {
+    append('\n✗ Lost connection to the tool', 'err'); es.close();
+    document.querySelectorAll('.tool').forEach(b=>b.disabled=false);
+  };
+}
+
+// ── Keyboard ────────────────────────────────────────────
+document.addEventListener('keydown', e=>{
+  const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
+  if (e.key === 'Escape') { closeDrawer(); if (typing) e.target.blur(); return; }
+  if (e.key === '/' && !typing) { e.preventDefault(); $('q').focus(); return; }
+  if (typing) return;
+  const a = view[cursor];
+  if (e.key === 'j' || e.key === 'ArrowDown'){ e.preventDefault(); cursor=Math.min(cursor+1,view.length-1); paintCursor(); }
+  else if (e.key === 'k' || e.key === 'ArrowUp'){ e.preventDefault(); cursor=Math.max(cursor-1,0); paintCursor(); }
+  else if (e.key === 's' && a){ setStatus(a,'SKIP'); }
+  else if (e.key === 'Enter' && a){ openReport(a); }
+});
+
+// Header sorting: first click ascending, click again to reverse. Clicking a
+// different column always starts ascending so the direction is never a surprise.
+$('head').querySelectorAll('th[data-sort]').forEach(th=>{
+  th.querySelector('.sortbtn').addEventListener('click', ()=>{
+    const key = th.dataset.sort;
+    sort = (sort.key === key) ? { key, dir: -sort.dir } : { key, dir: 1 };
+    paintSortHeaders();
+    cursor = 0; render();
+  });
+});
+
+function paintSortHeaders(){
+  $('head').querySelectorAll('th[data-sort]').forEach(th=>{
+    const on = th.dataset.sort === sort.key;
+    if (on) th.setAttribute('aria-sort', sort.dir === 1 ? 'ascending' : 'descending');
+    else th.removeAttribute('aria-sort');
+    th.querySelector('.arrow').textContent = on ? (sort.dir === 1 ? '▲' : '▼') : '';
+  });
+}
+
+$('q').addEventListener('input', ()=>{ cursor=0; render(); });
+$('drawer-close').addEventListener('click', closeDrawer);
+
+load().then(renderTools);
+</script>
+</body>
+</html>
