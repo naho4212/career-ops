@@ -600,8 +600,8 @@ const TOOLS = {
   verify: { label: 'Verify pipeline', argv: ['verify-pipeline.mjs'], blurb: 'Health-check the tracker' },
   merge: { label: 'Merge tracker', argv: ['merge-tracker.mjs'], blurb: 'Fold in pending TSV additions' },
   dedup: { label: 'Dedup tracker', argv: ['dedup-tracker.mjs'], blurb: 'Collapse duplicate rows' },
-  patterns: { label: 'Analyze patterns', argv: ['analyze-patterns.mjs'], blurb: 'Rejection + targeting analysis' },
-  followup: { label: 'Follow-up cadence', argv: ['followup-cadence.mjs'], blurb: 'Who is overdue a nudge' },
+  patterns: { label: 'Analyze patterns', argv: ['analyze-patterns.mjs', '--summary'], blurb: 'Rejection + targeting analysis' },
+  followup: { label: 'Follow-up cadence', argv: ['followup-cadence.mjs', '--summary'], blurb: 'Who is overdue a nudge' },
 };
 
 function streamTool(key, res) {

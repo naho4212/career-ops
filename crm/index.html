@@ -112,31 +112,51 @@ body{
 
 /* ── Body ───────────────────────────────────────────── */
 .body{display:flex;flex:1;min-height:0}
-.rail{
-  width:216px;flex:none;border-right:1px solid var(--line);
-  display:flex;flex-direction:column;min-height:0;background:var(--panel);
-}
-.rail-head{
-  font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;
-  color:var(--faint);padding:13px 14px 8px;
-}
+/* ── Tools view ─────────────────────────────────────── */
+.tools{flex:1;display:flex;min-height:0}
+.tool-list{width:280px;flex:none;border-right:1px solid var(--line);overflow:auto;padding:10px 0;background:var(--panel)}
 .tool{
   display:block;width:100%;text-align:left;background:transparent;border:0;
-  border-left:2px solid transparent;padding:7px 14px;cursor:pointer;color:var(--text);
-  font-family:var(--sans);font-size:12px;
+  border-left:2px solid transparent;padding:10px 16px;cursor:pointer;color:var(--text);
+  font-family:var(--sans);font-size:12.5px;
 }
 .tool:hover{background:var(--raised);border-left-color:var(--faint)}
-.tool:disabled{opacity:.4;cursor:default}
-.tool small{display:block;color:var(--faint);font-size:10.5px;margin-top:1px}
-.console{
-  flex:1;min-height:0;overflow:auto;margin:10px 0 0;padding:10px 14px;
-  border-top:1px solid var(--line);
-  font-family:var(--mono);font-size:10.5px;line-height:1.55;color:var(--dim);
-  white-space:pre-wrap;word-break:break-word;
+.tool[aria-current="true"]{background:var(--raised);border-left-color:var(--live)}
+.tool:disabled{opacity:.45;cursor:default}
+.tool small{display:block;color:var(--faint);font-size:11px;margin-top:2px}
+.tool .last{display:block;font-family:var(--mono);font-size:10px;color:var(--faint);margin-top:4px}
+.tool .last.ok{color:var(--s-interview)} .tool .last.err{color:var(--s-rejected)}
+.tool-out{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.tool-out-head{
+  display:flex;align-items:center;gap:10px;padding:11px 20px;border-bottom:1px solid var(--line);
+  font-family:var(--mono);font-size:11px;color:var(--dim);flex:none;
 }
-.console .ok{color:var(--s-interview)}
-.console .warn{color:var(--s-applied)}
-.console .err{color:var(--s-rejected)}
+.tool-out-head b{color:var(--text);font-weight:600}
+.tool-out-head .muted{color:var(--faint)}
+.tool-out-head .ok{color:var(--s-interview)} .tool-out-head .err{color:var(--s-rejected)}
+.tool-out-head .spin{width:9px;height:9px;border:1.5px solid var(--faint);border-top-color:var(--live);border-radius:50%;animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tool-out-foot{
+  display:flex;gap:14px;align-items:center;padding:9px 20px;border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:10.5px;color:var(--faint);flex:none;
+}
+.tool-out-foot .ok{color:var(--s-interview)} .tool-out-foot .warn{color:var(--s-applied)} .tool-out-foot .err{color:var(--s-rejected)}
+.console{
+  flex:1;min-height:0;overflow:auto;padding:14px 20px 30px;
+  font-family:var(--mono);font-size:11px;line-height:1.6;color:var(--dim);
+}
+.console .ln{white-space:pre-wrap;word-break:break-word;padding-left:14px;text-indent:-14px}
+.console .ln::before{content:'';display:inline-block;width:6px;height:6px;border-radius:1px;margin-right:8px;vertical-align:1px;background:transparent}
+.console .ok{color:var(--text)} .console .ok::before{background:var(--s-interview)}
+.console .warn{color:var(--text)} .console .warn::before{background:var(--s-applied)}
+.console .err{color:var(--text)} .console .err::before{background:var(--s-rejected)}
+.console .info{color:var(--dim)} .console .info::before{background:var(--faint)}
+.console .head{color:var(--live);font-size:10px;letter-spacing:.11em;text-transform:uppercase;margin:14px 0 4px;padding:0;text-indent:0}
+.console .head::before{display:none}
+.console .rule{border-top:1px solid var(--line);margin:6px 0;height:0}
+.console .rule::before{display:none}
+.console .gap{height:6px}
+.console .gap::before{display:none}
 
 .main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
 .view-table{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
@@ -273,7 +293,7 @@ select.act{padding:3px 4px}
 .empty b{display:block;color:var(--dim);margin-bottom:5px;font-size:13px}
 :focus-visible{outline:1.5px solid var(--text);outline-offset:1px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
-@media (max-width:860px){.rail{display:none}.c-date,.c-num{display:none}}
+@media (max-width:860px){.c-date,.c-num{display:none}}
 </style>
 </head>
 <body>
@@ -284,6 +304,7 @@ select.act{padding:3px 4px}
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" data-view="table" aria-selected="true">Pipeline</button>
     <button class="tab" role="tab" data-view="inputs" aria-selected="false">Inputs</button>
+    <button class="tab" role="tab" data-view="tools" aria-selected="false">Tools</button>
   </div>
   <div class="spacer"></div>
   <div class="hint">/ search &nbsp;·&nbsp; j k move &nbsp;·&nbsp; s skip &nbsp;·&nbsp; enter report</div>
@@ -295,12 +316,6 @@ select.act{padding:3px 4px}
 </section>
 
 <div class="body">
-  <aside class="rail">
-    <div class="rail-head">Tools</div>
-    <div id="tools"></div>
-    <div class="console" id="console">Idle.</div>
-  </aside>
-
   <main class="main">
     <div id="view-table" class="view-table">
     <div class="toolbar">
@@ -404,6 +419,15 @@ select.act{padding:3px 4px}
         </div>
       </section>
 
+    </div>
+
+    <div class="tools" id="view-tools" hidden>
+      <div class="tool-list" id="tools"></div>
+      <div class="tool-out">
+        <div class="tool-out-head" id="tool-head"><span class="muted">Pick a tool to run. Output appears here.</span></div>
+        <div class="console" id="console"></div>
+        <div class="tool-out-foot" id="tool-foot" hidden></div>
+      </div>
     </div>
   </main>
 </div>
@@ -585,6 +609,7 @@ function showView(v){
   document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected', String(t.dataset.view===v)));
   $('view-table').hidden = v !== 'table';
   $('view-inputs').hidden = v !== 'inputs';
+  $('view-tools').hidden = v !== 'tools';
   if (v === 'inputs' && !inputs) loadInputs();
   try { localStorage.setItem('crm.view', v); } catch {}
 }
@@ -831,42 +856,76 @@ document.addEventListener('mousedown', e=>{
 });
 
 // ── Tools ───────────────────────────────────────────────
+const lastRun = {}; // key -> {code, when, secs}
 function renderTools(){
-  $('tools').innerHTML = state.tools.map(t=>
-    `<button class="tool" data-k="${esc(t.key)}">${esc(t.label)}<small>${esc(t.blurb)}</small></button>`
-  ).join('');
+  $('tools').innerHTML = state.tools.map(t=>{
+    const l = lastRun[t.key];
+    const last = l ? `<span class="last ${l.code===0?'ok':'err'}">${l.code===0?'✓':'✗'} ${l.when} · ${l.secs}s</span>` : '';
+    return `<button class="tool" data-k="${esc(t.key)}">${esc(t.label)}<small>${esc(t.blurb)}</small>${last}</button>`;
+  }).join('');
   $('tools').querySelectorAll('.tool').forEach(b=>
     b.addEventListener('click',()=>runTool(b.dataset.k)));
 }
 
-function runTool(key){
-  const con = $('console');
-  con.textContent = '';
-  document.querySelectorAll('.tool').forEach(b=>b.disabled=true);
-  const es = new EventSource('/api/tool?name='+encodeURIComponent(key));
-  const append = (txt, cls) => {
-    const s = document.createElement('span');
-    if (cls) s.className = cls;
-    s.textContent = txt + '\n';
-    con.appendChild(s); con.scrollTop = con.scrollHeight;
-  };
-  es.addEventListener('start', e => append('› ' + JSON.parse(e.data).label + '\n'));
-  es.addEventListener('line', e => {
-    const l = JSON.parse(e.data);
-    append(l, /✅|OK|added/i.test(l) ? 'ok' : /⚠|warn/i.test(l) ? 'warn' : /error|❌|fail/i.test(l) ? 'err' : '');
-  });
-  es.addEventListener('done', e => {
-    const { code } = JSON.parse(e.data);
-    append(code === 0 ? '\n✓ Finished' : `\n✗ Exited ${code}`, code === 0 ? 'ok' : 'err');
-    es.close();
-    document.querySelectorAll('.tool').forEach(b=>b.disabled=false);
-    load(); // tools mutate the tracker/pipeline — pull fresh numbers
-  });
-  es.onerror = () => {
-    append('\n✗ Lost connection to the tool', 'err'); es.close();
-    document.querySelectorAll('.tool').forEach(b=>b.disabled=false);
-  };
+// Classify a raw CLI line so the console reads as a report, not a log dump.
+// Status emoji become colored markers; ====/---- rows become rules; ALL-CAPS
+// labels become section heads; blank runs collapse to a single gap.
+const ANSI = /\x1b\[[0-9;]*m/g;
+function classify(raw){
+  const l = raw.replace(ANSI,'').replace(/\s+$/,'');
+  if (!l.trim()) return { cls:'gap', text:'' };
+  if (/^[=\-─━]{4,}$/.test(l.trim())) return { cls:'rule', text:'' };
+  if (/^[A-Z][A-Z0-9 &/()+-]{3,}$/.test(l.trim())) return { cls:'head', text:l.trim() };
+  const strip = t => t.replace(/^\s*(✅|⚠️|⚠|❌|📊|🔒|ℹ️|✓|✗|🟢|🟡|🔴)\s*/,'');
+  if (/^\s*(✅|✓|🟢)/.test(l) || /\b(OK|added|merged|passed)\b/.test(l)) return { cls:'ok', text:strip(l) };
+  if (/^\s*(⚠️|⚠|🟡)/.test(l) || /\bwarn/i.test(l)) return { cls:'warn', text:strip(l) };
+  if (/^\s*(❌|✗|🔴)/.test(l) || /\b(error|fail(ed)?)\b/i.test(l)) return { cls:'err', text:strip(l) };
+  if (/^\s*(📊|🔒|ℹ️)/.test(l)) return { cls:'info', text:strip(l) };
+  return { cls:'', text:l };
 }
+
+let running = null;
+function runTool(key){
+  if (running) return;
+  running = key;
+  const con = $('console'); con.innerHTML = '';
+  const tool = state.tools.find(t=>t.key===key);
+  const t0 = performance.now();
+  const counts = { ok:0, warn:0, err:0 };
+  let lastCls = 'gap';
+  $('tool-head').innerHTML = `<span class="spin"></span><b>${esc(tool.label)}</b><span class="muted">running…</span>`;
+  $('tool-foot').hidden = true;
+  document.querySelectorAll('.tool').forEach(b=>{ b.disabled = true; b.setAttribute('aria-current', String(b.dataset.k===key)); });
+  const es = new EventSource('/api/tool?name='+encodeURIComponent(key));
+  const push = (raw) => {
+    const { cls, text } = classify(raw);
+    if (cls === 'gap' && (lastCls === 'gap' || lastCls === 'rule' || lastCls === 'head' || !con.childElementCount)) return;
+    if (cls === 'rule' && lastCls === 'rule') return;
+    const d = document.createElement('div');
+    d.className = 'ln' + (cls ? ' ' + cls : '');
+    d.textContent = text;
+    con.appendChild(d); lastCls = cls;
+    if (cls in counts) counts[cls]++;
+    con.scrollTop = con.scrollHeight;
+  };
+  es.addEventListener('line', e => push(JSON.parse(e.data)));
+  const finish = (code, note) => {
+    const secs = ((performance.now()-t0)/1000).toFixed(1);
+    lastRun[key] = { code, secs, when: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) };
+    $('tool-head').innerHTML = `<b>${esc(tool.label)}</b><span class="${code===0?'ok':'err'}">${code===0?'finished':'exited '+code}</span><span class="muted">${secs}s</span>`;
+    $('tool-foot').hidden = false;
+    $('tool-foot').innerHTML = note ? `<span class="err">${esc(note)}</span>` :
+      [counts.ok && `<span class="ok">${counts.ok} ok</span>`, counts.warn && `<span class="warn">${counts.warn} warnings</span>`, counts.err && `<span class="err">${counts.err} errors</span>`]
+        .filter(Boolean).join('') || '<span class="muted">no status lines</span>';
+    es.close(); running = null;
+    renderTools();
+    document.querySelectorAll('.tool').forEach(b=>b.setAttribute('aria-current', String(b.dataset.k===key)));
+    load(); // tools mutate the tracker/pipeline — pull fresh numbers
+  };
+  es.addEventListener('done', e => finish(JSON.parse(e.data).code));
+  es.onerror = () => finish(1, 'Lost connection to the tool');
+}
+
 
 // ── Keyboard ────────────────────────────────────────────
 document.addEventListener('keydown', e=>{

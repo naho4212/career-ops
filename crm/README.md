@@ -36,6 +36,16 @@ step; it does not crash. Point it at another checkout with
   a new tab. The PDF is resolved from `data/pdf-index.tsv`, then the report's
   `**PDF:**` line, then a company-slug match in `output/*.pdf` (newest wins).
 
+## Tools tab
+
+Six maintenance scripts run from the **Tools** tab (`scan`, `verify-pipeline`,
+`merge-tracker`, `dedup-tracker`, `analyze-patterns --summary`,
+`followup-cadence --summary`), streamed live over SSE. The console renders the
+CLI output as a report rather than a log: status emoji become colored markers,
+`====`/`----` rows become rules, ALL-CAPS labels become section heads, blank
+runs collapse, and a footer tallies ok / warnings / errors. Each tool remembers
+its last run time and exit code for the session.
+
 ## Inputs tab
 
 The **Inputs** tab (masthead toggle, remembered per browser) edits the user-layer
