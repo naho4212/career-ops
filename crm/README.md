@@ -28,9 +28,9 @@ step; it does not crash. Point it at another checkout with
   clickable too.
 - **Report** opens the drawer. While it is out, clicking another row or moving
   with `j`/`k` swaps in that row's report; clicking anywhere outside the table
-  or drawer (search, tools, filters) collapses it.
-- **Show** reveals the report `.md` in Finder (macOS-only; elsewhere the
-  toast shows the path).
+  or drawer (search, tools, filters) collapses it. The `File:` line at the top
+  of the report has **Show in Finder** (macOS-only; elsewhere the toast shows
+  the path).
 - **PDF** appears on rows with a CV PDF and is a link that opens it inline in
   a new tab. The PDF is resolved from `data/pdf-index.tsv`, then the report's
   `**PDF:**` line, then a company-slug match in `output/*.pdf` (newest wins).
