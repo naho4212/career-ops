@@ -383,7 +383,8 @@ function render(){
         border-color:${COLOR[a.status]||'var(--line)'}">${esc(a.status)}</span></td>
       <td class="c-act">
         ${a.report && a.report!=='—' ? `<button class="act" data-act="report">Report</button>`:''}
-        ${a.pdf ? `<a class="act pdf" data-act="pdf-view" href="/api/pdf?num=${a.num}" target="_blank" rel="noopener" title="${esc(a.pdf)}">PDF</a><button class="act pdf" data-act="pdf-reveal" title="Show PDF in Finder">Show</button>`:''}
+        ${a.pdf ? `<a class="act pdf" data-act="pdf-view" href="/api/pdf?num=${a.num}" target="_blank" rel="noopener" title="${esc(a.pdf)}">PDF</a>`:''}
+        ${a.report && a.report!=='—' ? `<button class="act pdf" data-act="report-reveal" title="Show report file in Finder">Show</button>`:''}
         <select class="act primary" data-act="set" aria-label="Change status for ${esc(a.company)}">
           <option value="">Status…</option>
           ${opts.filter(o=>o!==a.status).map(o=>`<option>${esc(o)}</option>`).join('')}
@@ -395,7 +396,7 @@ function render(){
     const a = view[+tr.dataset.i];
     tr.addEventListener('mousedown', ()=>{ cursor=+tr.dataset.i; paintCursor(); followDrawer(); });
     tr.querySelector('[data-act="report"]')?.addEventListener('click', ()=>openReport(a));
-    tr.querySelector('[data-act="pdf-reveal"]')?.addEventListener('click', ()=>revealFile(a, 'pdf'));
+    tr.querySelector('[data-act="report-reveal"]')?.addEventListener('click', ()=>revealFile(a, 'report'));
     tr.querySelector('[data-act="set"]')?.addEventListener('change', e=>{
       if (e.target.value) setStatus(a, e.target.value);
     });
