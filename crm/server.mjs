@@ -19,7 +19,7 @@ import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync } from
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import yaml from 'js-yaml';
+import { load as yamlLoad } from 'js-yaml';
 
 import { resolveColumns, parseTrackerRow } from '../tracker-parse.mjs';
 import {
@@ -46,7 +46,7 @@ const PORT = portArgIdx > -1 ? Number(process.argv[portArgIdx + 1]) : 7788;
 // states.yml is the shared source of truth for the writer (career-ops) and
 // every reader (Go TUI, this CRM). Never hardcode the list.
 function loadStates() {
-  const doc = yaml.load(readFileSync(STATES, 'utf8'));
+  const doc = yamlLoad(readFileSync(STATES, 'utf8'));
   const list = Array.isArray(doc?.states) ? doc.states : [];
   return list.map((s) => ({
     id: s.id,
