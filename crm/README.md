@@ -9,9 +9,15 @@ tracker writes you click.
 ## Run
 
 ```bash
+(cd crm && npm install)        # once — terminal deps (node-pty, ws, xterm)
 node crm/server.mjs            # http://127.0.0.1:7788
 node crm/server.mjs --port 8000
 ```
+
+`crm/package.json` is separate from the root `package.json` on purpose: the
+root one is a system-layer file the updater replaces. Skipping `npm install`
+is fine — everything but the Terminal tab works, and that tab says what to
+run. `node-pty` needs a C toolchain on first install (Xcode CLT on macOS).
 
 Binds to `127.0.0.1` only. The tracker holds recruiter names, phone numbers,
 and comp targets, so it never goes on the network. Before the first status
@@ -20,6 +26,23 @@ write of each run it copies the tracker to `data/applications.md.crm-{date}.bak`
 Fresh clone with no tracker yet? The board opens empty and tells you the next
 step; it does not crash. Point it at another checkout with
 `CAREER_OPS_ROOT=/path/to/career-ops node crm/server.mjs`.
+
+## Terminal tab
+
+A real login shell (`$SHELL -l`, cwd = repo root) in the dashboard: xterm.js in
+the page, `node-pty` behind a WebSocket. Anything Terminal.app can do works
+here — `claude` interactively with its full TUI and permission prompts,
+`vim cv.md`, git, the `.mjs` scripts. That is the point: the headless tools
+run `--dangerously-skip-permissions` because `-p` mode cannot answer prompts;
+an interactive session can, which is what `apply` mode (stop before Submit)
+and hands-on CV edits need.
+
+Security: the server binds to 127.0.0.1 and the upgrade to `/term` requires
+both a matching `Origin` and a per-launch token embedded in the served page,
+so no other page or process on the machine can open a shell through it. One
+shell per page; closing the tab kills it. Run `tmux` inside if you want a
+session that outlives the page. `CLAUDE*` env vars are stripped so a nested
+`claude` starts cleanly.
 
 ## Queued (pre-evaluation)
 

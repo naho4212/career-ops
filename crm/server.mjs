@@ -19,6 +19,8 @@ import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, statS
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
+import { createRequire } from 'node:module';
 import { load as yamlLoad } from 'js-yaml';
 
 import { resolveColumns, parseTrackerRow } from '../tracker-parse.mjs';
@@ -43,6 +45,28 @@ const PDF_INDEX = path.join(ROOT, 'data', 'pdf-index.tsv');
 const PROFILE = path.join(ROOT, 'config', 'profile.yml');
 const PORTALS = path.join(ROOT, 'portals.yml');
 const BLACKLIST = path.join(ROOT, 'data', 'blacklist.md');
+
+// ── Terminal (optional) ──────────────────────────────────────────────
+// node-pty + ws + xterm live in crm/package.json, not the root package.json
+// (a system-layer file). If `npm install` hasn't been run in crm/, the
+// server still boots and the Terminal tab explains what to do.
+const require_ = createRequire(import.meta.url);
+let ptyMod = null, WebSocketServer = null, termUnavailable = '';
+try {
+  ptyMod = require_('node-pty');
+  ({ WebSocketServer } = require_('ws'));
+} catch (e) {
+  termUnavailable = `Terminal disabled: ${e.message.split('\n')[0]} — run \`npm install\` inside crm/`;
+}
+const VENDOR = {
+  '/vendor/xterm.js': ['@xterm/xterm/lib/xterm.js', 'text/javascript'],
+  '/vendor/xterm.css': ['@xterm/xterm/css/xterm.css', 'text/css'],
+  '/vendor/addon-fit.js': ['@xterm/addon-fit/lib/addon-fit.js', 'text/javascript'],
+};
+// Per-launch secret the served page embeds; the WebSocket upgrade requires
+// it plus a matching Origin, so no other page or process on the machine can
+// open a shell through this server.
+const TOKEN = crypto.randomBytes(16).toString('hex');
 
 const portArgIdx = process.argv.indexOf('--port');
 const PORT = portArgIdx > -1 ? Number(process.argv[portArgIdx + 1]) : 7788;
@@ -700,7 +724,9 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (url.pathname === '/' || url.pathname === '/index.html') {
-      const html = readFileSync(path.join(HERE, 'index.html'));
+      const html = readFileSync(path.join(HERE, 'index.html'), 'utf8')
+        .replace('__CRM_TOKEN__', TOKEN)
+        .replace('__CRM_TERM__', termUnavailable ? termUnavailable.replace(/"/g, '&quot;') : 'on');
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       return res.end(html);
     }
@@ -772,6 +798,14 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, path: abs, revealed: reveal(abs) });
     }
 
+    if (VENDOR[url.pathname]) {
+      let file;
+      try { file = require_.resolve(VENDOR[url.pathname][0]); } catch { file = null; }
+      if (!file) { res.writeHead(404); return res.end('vendor file missing — npm install in crm/'); }
+      res.writeHead(200, { 'Content-Type': VENDOR[url.pathname][1], 'Cache-Control': 'no-cache' });
+      return createReadStream(file).pipe(res);
+    }
+
     if (url.pathname === '/api/inputs') return json(res, 200, readInputs());
 
     if (url.pathname.startsWith('/api/inputs/') && req.method === 'POST') {
@@ -828,8 +862,42 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// ── Terminal WebSocket ───────────────────────────────────────────────
+const ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`]);
+const wss = WebSocketServer ? new WebSocketServer({ noServer: true }) : null;
+server.on('upgrade', (req, socket, head) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  if (url.pathname !== '/term' || !wss) return socket.destroy();
+  if (!ORIGINS.has(req.headers.origin || '') || url.searchParams.get('token') !== TOKEN) return socket.destroy();
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    const cols = Math.max(20, Number(url.searchParams.get('cols')) || 100);
+    const rows = Math.max(5, Number(url.searchParams.get('rows')) || 30);
+    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^CLAUDE(CODE|_)/.test(k)));
+    Object.assign(env, { TERM: 'xterm-256color', COLORTERM: 'truecolor', CAREER_OPS_CRM: '1' });
+    const shell = process.env.SHELL || (process.platform === 'win32' ? 'powershell.exe' : 'bash');
+    let term;
+    try {
+      term = ptyMod.spawn(shell, process.platform === 'win32' ? [] : ['-l'], { name: 'xterm-256color', cols, rows, cwd: ROOT, env });
+    } catch (e) {
+      ws.send(`\r\n\x1b[31mCould not start ${shell}: ${e.message}\x1b[0m\r\n`);
+      return ws.close();
+    }
+    term.onData((d) => { if (ws.readyState === ws.OPEN) ws.send(d); });
+    term.onExit(({ exitCode }) => {
+      if (ws.readyState === ws.OPEN) { ws.send(`\r\n\x1b[2m[shell exited ${exitCode}]\x1b[0m\r\n`); ws.close(); }
+    });
+    ws.on('message', (m) => {
+      let msg; try { msg = JSON.parse(m); } catch { return; }
+      if (msg.t === 'in') term.write(String(msg.d));
+      else if (msg.t === 'resize') term.resize(Math.max(20, msg.cols | 0), Math.max(5, msg.rows | 0));
+    });
+    ws.on('close', () => { try { term.kill(); } catch { /* already gone */ } });
+  });
+});
+
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`career-ops CRM  →  http://127.0.0.1:${PORT}`);
   console.log(`Tracker: ${path.relative(process.cwd(), TRACKER)}`);
   console.log('Bound to localhost only. Ctrl-C to stop.');
+  if (termUnavailable) console.log(termUnavailable);
 });
