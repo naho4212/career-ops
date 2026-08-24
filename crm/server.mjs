@@ -163,13 +163,22 @@ function resolvePdf(row, meta) {
     const abs = path.resolve(ROOT, m[1]);
     if (insideRoot(abs)) return path.relative(ROOT, abs);
   }
+  // Slug fallback. A company can have several tracked roles, so only accept a
+  // PDF dated on or after this row's evaluation: a CV generated earlier was
+  // tailored for a different posting and is the wrong file to upload.
   if (existsSync(OUTPUT)) {
     const s = slug(row.company);
+    const since = /\d{4}-\d{2}-\d{2}/.exec(row.report || '')?.[0] || row.date || '';
     if (s) {
       const hits = readdirSync(OUTPUT)
         .filter((f) => f.endsWith('.pdf') && f.includes(`-${s}-`))
-        .map((f) => ({ f, t: statSync(path.join(OUTPUT, f)).mtimeMs }))
-        .sort((a, b) => b.t - a.t);
+        .map((f) => {
+          const stamp = /\d{4}-\d{2}-\d{2}/.exec(f)?.[0]
+            || statSync(path.join(OUTPUT, f)).mtime.toISOString().slice(0, 10);
+          return { f, stamp };
+        })
+        .filter((h) => !since || h.stamp >= since)
+        .sort((a, b) => (a.stamp < b.stamp ? 1 : -1));
       if (hits.length) return path.join('output', hits[0].f);
     }
   }
