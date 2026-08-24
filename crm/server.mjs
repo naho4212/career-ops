@@ -40,6 +40,9 @@ const PIPELINE = path.join(ROOT, 'data', 'pipeline.md');
 const STATES = path.join(ROOT, 'templates', 'states.yml');
 const OUTPUT = path.join(ROOT, 'output');
 const PDF_INDEX = path.join(ROOT, 'data', 'pdf-index.tsv');
+const PROFILE = path.join(ROOT, 'config', 'profile.yml');
+const PORTALS = path.join(ROOT, 'portals.yml');
+const BLACKLIST = path.join(ROOT, 'data', 'blacklist.md');
 
 const portArgIdx = process.argv.indexOf('--port');
 const PORT = portArgIdx > -1 ? Number(process.argv[portArgIdx + 1]) : 7788;
@@ -220,6 +223,291 @@ function reveal(abs) {
   if (process.platform !== 'darwin') return false;
   spawn('open', ['-R', abs], { stdio: 'ignore', detached: true }).unref();
   return true;
+}
+
+// ── Inputs: profile.yml / portals.yml / pipeline.md / blacklist.md ───
+// These are user-layer files with hand-written comments. js-yaml round-trips
+// drop comments, so every write here is a line-level patch: replace one
+// block, leave every other byte alone, then parse the result before writing
+// so a bad patch can never leave a file the rest of the system can't load.
+
+const backedUpFiles = new Set();
+function backupInput(file) {
+  if (backedUpFiles.has(file) || !existsSync(file)) return;
+  const stamp = new Date().toISOString().slice(0, 10);
+  const dest = `${file}.crm-${stamp}.bak`;
+  if (!existsSync(dest)) copyFileSync(file, dest);
+  backedUpFiles.add(file);
+}
+
+function writeYamlChecked(file, text) {
+  yamlLoad(text); // throws on a broken patch — nothing written
+  backupInput(file);
+  writeFileAtomic(file, text);
+}
+
+const q = (v) => JSON.stringify(String(v ?? ''));
+
+/**
+ * Find the line range of a YAML block. `pathKeys` walks nested mapping keys by
+ * indentation (2 spaces per level): ['target_roles','primary'] matches the
+ * `  primary:` line under `target_roles:`. Returns {start, end} where end is
+ * the first line after the block (a line at indent <= the key's indent that
+ * is not blank/comment), or null when the key is absent.
+ */
+function findBlock(lines, pathKeys) {
+  let indent = 0, from = 0, start = -1;
+  for (const key of pathKeys) {
+    start = -1;
+    for (let i = from; i < lines.length; i++) {
+      const l = lines[i];
+      if (!l.trim() || l.trim().startsWith('#')) continue;
+      const ind = l.match(/^ */)[0].length;
+      if (ind < indent) break;
+      if (ind === indent && l.slice(ind).startsWith(key + ':')) { start = i; break; }
+    }
+    if (start < 0) return null;
+    from = start + 1; indent += 2;
+  }
+  const keyIndent = indent - 2;
+  let end = start + 1;
+  for (; end < lines.length; end++) {
+    const l = lines[end];
+    if (!l.trim() || l.trim().startsWith('#')) continue;
+    if (l.match(/^ */)[0].length <= keyIndent) break;
+  }
+  // don't swallow trailing blank/comment lines that belong to the next key
+  while (end > start + 1 && (!lines[end - 1].trim() || lines[end - 1].trim().startsWith('#'))) end--;
+  return { start, end, indent: keyIndent };
+}
+
+/** Replace a `key:` list block with the given items (comments inside it are dropped). */
+function setListBlock(text, pathKeys, items) {
+  const lines = text.split('\n');
+  const b = findBlock(lines, pathKeys);
+  if (!b) throw new Error(`${pathKeys.join('.')} not found`);
+  const pad = ' '.repeat(b.indent);
+  const body = items.length ? items.map((it) => `${pad}  - ${q(it)}`) : [`${pad}  []`];
+  lines.splice(b.start + 1, b.end - b.start - 1, ...body);
+  return lines.join('\n');
+}
+
+/** Replace the value of a scalar `key: value` line, keeping a trailing comment. */
+function setScalar(text, pathKeys, value) {
+  const lines = text.split('\n');
+  const b = findBlock(lines, pathKeys);
+  if (!b) throw new Error(`${pathKeys.join('.')} not found`);
+  const l = lines[b.start];
+  const m = /^(\s*[^:]+:)(.*)$/.exec(l);
+  const comment = /\s#.*$/.exec(m[2])?.[0] || '';
+  lines[b.start] = `${m[1]} ${q(value)}${comment}`;
+  return lines.join('\n');
+}
+
+function readInputs() {
+  const profile = existsSync(PROFILE) ? yamlLoad(readFileSync(PROFILE, 'utf8')) || {} : {};
+  const portals = existsSync(PORTALS) ? yamlLoad(readFileSync(PORTALS, 'utf8')) || {} : {};
+  const targeting = {
+    primary: profile.target_roles?.primary || [],
+    anti_industries: profile.anti_targets?.industries || [],
+    anti_role_shapes: profile.anti_targets?.role_shapes || [],
+    compensation: {
+      target_range: profile.compensation?.target_range || '',
+      minimum: profile.compensation?.minimum || '',
+      location_flexibility: profile.compensation?.location_flexibility || '',
+    },
+    location: {
+      country: profile.location?.country || '',
+      city: profile.location?.city || '',
+      timezone: profile.location?.timezone || '',
+      visa_status: profile.location?.visa_status || '',
+    },
+  };
+  const companies = (portals.tracked_companies || []).map((c) => ({
+    name: c.name || '', careers_url: c.careers_url || '', notes: c.notes || '',
+    enabled: c.enabled !== false, method: c.api ? 'api' : (c.scan_method || 'auto'),
+  }));
+  const title_filter = {
+    positive: portals.title_filter?.positive || [],
+    negative: portals.title_filter?.negative || [],
+  };
+  const pending = [];
+  if (existsSync(PIPELINE)) {
+    for (const l of readFileSync(PIPELINE, 'utf8').split('\n')) {
+      const m = /^- \[ \] (.+)$/.exec(l);
+      if (!m) continue;
+      const [url, company = '', title = ''] = m[1].split('|').map((x) => x.trim());
+      pending.push({ url, company, title });
+    }
+  }
+  const blacklist = [];
+  if (existsSync(BLACKLIST)) {
+    for (const l of readFileSync(BLACKLIST, 'utf8').split('\n')) {
+      if (!l.trim().startsWith('|')) continue;
+      const c = l.split('|').map((x) => x.trim());
+      if (!c[1] || /^[-: ]+$/.test(c[1]) || c[1].toLowerCase() === 'company') continue;
+      blacklist.push({ company: c[1], since: c[2] || '', scope: c[3] || '', reason: c[4] || '' });
+    }
+  }
+  return {
+    targeting, companies, title_filter, pending, blacklist,
+    files: {
+      profile: path.relative(ROOT, PROFILE), portals: path.relative(ROOT, PORTALS),
+      pipeline: path.relative(ROOT, PIPELINE), blacklist: path.relative(ROOT, BLACKLIST),
+    },
+  };
+}
+
+const lines = (v) => (Array.isArray(v) ? v : String(v ?? '').split('\n')).map((x) => String(x).trim()).filter(Boolean);
+
+function saveTargeting(body) {
+  let t = readFileSync(PROFILE, 'utf8');
+  t = setListBlock(t, ['target_roles', 'primary'], lines(body.primary));
+  t = setListBlock(t, ['anti_targets', 'industries'], lines(body.anti_industries));
+  t = setListBlock(t, ['anti_targets', 'role_shapes'], lines(body.anti_role_shapes));
+  for (const k of ['target_range', 'minimum', 'location_flexibility']) {
+    if (body.compensation && k in body.compensation) t = setScalar(t, ['compensation', k], body.compensation[k]);
+  }
+  for (const k of ['country', 'city', 'timezone', 'visa_status']) {
+    if (body.location && k in body.location) t = setScalar(t, ['location', k], body.location[k]);
+  }
+  writeYamlChecked(PROFILE, t);
+}
+
+function saveTitleFilter(body) {
+  let t = readFileSync(PORTALS, 'utf8');
+  t = setListBlock(t, ['title_filter', 'positive'], lines(body.positive));
+  t = setListBlock(t, ['title_filter', 'negative'], lines(body.negative));
+  writeYamlChecked(PORTALS, t);
+}
+
+/** Known ATS hosts get a zero-token API feed; anything else falls back to websearch. */
+function inferCompanyEntry({ name, careers_url, notes }, positiveTitles) {
+  const e = { name, careers_url };
+  let m;
+  if ((m = /ashbyhq\.com\/([^/?#]+)/.exec(careers_url))) e.api = `https://api.ashbyhq.com/posting-api/job-board/${m[1]}`;
+  else if ((m = /greenhouse\.io\/([^/?#]+)/.exec(careers_url))) e.api = `https://boards-api.greenhouse.io/v1/boards/${m[1]}/jobs`;
+  else if ((m = /lever\.co\/([^/?#]+)/.exec(careers_url))) e.api = `https://api.lever.co/v0/postings/${m[1]}?mode=json`;
+  else {
+    e.scan_method = 'websearch';
+    const host = (() => { try { return new URL(careers_url).host + new URL(careers_url).pathname.replace(/\/$/, ''); } catch { return ''; } })();
+    const title = positiveTitles[0] || 'Product Manager';
+    e.scan_query = host ? `site:${host} "${title}"` : `${name} "${title}"`;
+  }
+  if (notes) e.notes = notes;
+  e.enabled = true;
+  return e;
+}
+
+function companyBlock(lines_, name) {
+  const key = name.trim().toLowerCase();
+  let start = -1;
+  for (let i = 0; i < lines_.length; i++) {
+    const m = /^  - name:\s*(.+?)\s*$/.exec(lines_[i]);
+    if (m && m[1].replace(/^["']|["']$/g, '').toLowerCase() === key) { start = i; break; }
+  }
+  if (start < 0) return null;
+  let end = start + 1;
+  for (; end < lines_.length; end++) {
+    const l = lines_[end];
+    if (/^  - /.test(l) || /^[^ #]/.test(l)) break;
+  }
+  return { start, end };
+}
+
+function addCompany(body) {
+  const name = String(body.name || '').trim();
+  const careers_url = String(body.careers_url || '').trim();
+  if (!name) throw new Error('Company name is required');
+  if (careers_url && !/^https?:\/\//.test(careers_url)) throw new Error('Careers URL must start with http(s)://');
+  let t = readFileSync(PORTALS, 'utf8');
+  if (companyBlock(t.split('\n'), name)) throw new Error(`${name} is already tracked`);
+  const inputs = readInputs();
+  const e = inferCompanyEntry({ name, careers_url, notes: String(body.notes || '').trim() }, inputs.title_filter.positive);
+  const block = ['', `  - name: ${name}`]
+    .concat(Object.entries(e).filter(([k]) => k !== 'name').map(([k, v]) =>
+      `    ${k}: ${typeof v === 'boolean' ? v : (k === 'scan_query' || k === 'notes' ? q(v) : v)}`));
+  if (!/\ntracked_companies:/.test(t)) throw new Error('portals.yml has no tracked_companies key');
+  t = t.replace(/\n+$/, '\n') + block.join('\n') + '\n';
+  writeYamlChecked(PORTALS, t);
+  return e;
+}
+
+function setCompanyEnabled(name, enabled) {
+  const ls = readFileSync(PORTALS, 'utf8').split('\n');
+  const b = companyBlock(ls, name);
+  if (!b) throw new Error(`${name} not found in portals.yml`);
+  let done = false;
+  for (let i = b.start + 1; i < b.end; i++) {
+    if (/^    enabled:/.test(ls[i])) { ls[i] = `    enabled: ${enabled}`; done = true; }
+  }
+  if (!done) ls.splice(b.end, 0, `    enabled: ${enabled}`);
+  writeYamlChecked(PORTALS, ls.join('\n'));
+}
+
+function removeCompany(name) {
+  const ls = readFileSync(PORTALS, 'utf8').split('\n');
+  const b = companyBlock(ls, name);
+  if (!b) throw new Error(`${name} not found in portals.yml`);
+  let end = b.end;
+  while (end > b.start + 1 && !ls[end - 1].trim()) end--; // keep one blank separator
+  ls.splice(b.start, end - b.start);
+  writeYamlChecked(PORTALS, ls.join('\n'));
+}
+
+function addPending(body) {
+  const url = String(body.url || '').trim();
+  if (!/^https?:\/\//.test(url)) throw new Error('Paste a full http(s) URL');
+  let t = existsSync(PIPELINE) ? readFileSync(PIPELINE, 'utf8') : '# Pipeline — Pending URLs\n\n## Pending\n\n';
+  if (t.includes(url)) throw new Error('That URL is already in the pipeline');
+  const extra = [body.company, body.title].map((x) => String(x || '').trim()).filter(Boolean);
+  const line = `- [ ] ${[url, ...extra].join(' | ')}`;
+  const ls = t.split('\n');
+  const h = ls.findIndex((l) => /^## (Pending|Pendientes)/i.test(l));
+  if (h < 0) { t = t.replace(/\n*$/, '\n') + `\n## Pending\n\n${line}\n`; }
+  else {
+    let i = h + 1;
+    while (i < ls.length && (!ls[i].trim() || ls[i].trim().startsWith('<!--'))) i++;
+    ls.splice(i, 0, line);
+    t = ls.join('\n');
+  }
+  backupInput(PIPELINE);
+  writeFileAtomic(PIPELINE, t);
+  return line;
+}
+
+function removePending(url) {
+  const ls = readFileSync(PIPELINE, 'utf8').split('\n');
+  const i = ls.findIndex((l) => l.startsWith('- [ ] ') && l.slice(6).split('|')[0].trim() === url);
+  if (i < 0) throw new Error('URL not pending');
+  ls.splice(i, 1);
+  backupInput(PIPELINE);
+  writeFileAtomic(PIPELINE, ls.join('\n'));
+}
+
+const normCo = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+function addBlacklist(body) {
+  const company = String(body.company || '').trim();
+  if (!company) throw new Error('Company is required');
+  const cell = (v) => String(v || '').replace(/\|/g, '/').trim();
+  let t = existsSync(BLACKLIST) ? readFileSync(BLACKLIST, 'utf8')
+    : '# Company Blacklist\n\nDo-not-apply list. `scan.mjs` skips these; `auto-pipeline`/`oferta`/`apply` stop and ask before proceeding.\n\n| Company | Since | Scope | Reason |\n|---------|-------|-------|--------|\n';
+  for (const e of readInputs().blacklist) if (normCo(e.company) === normCo(company)) throw new Error(`${e.company} is already blacklisted`);
+  const row = `| ${cell(company)} | ${new Date().toISOString().slice(0, 10)} | ${cell(body.scope) || 'company'} | ${cell(body.reason)} |`;
+  if (!/\|\s*Company\s*\|/i.test(t)) t = t.replace(/\n*$/, '\n') + '\n| Company | Since | Scope | Reason |\n|---------|-------|-------|--------|\n';
+  t = t.replace(/\n*$/, '\n') + row + '\n';
+  backupInput(BLACKLIST);
+  writeFileAtomic(BLACKLIST, t);
+}
+
+function removeBlacklist(company) {
+  const ls = readFileSync(BLACKLIST, 'utf8').split('\n');
+  const i = ls.findIndex((l) => l.trim().startsWith('|') && normCo(l.split('|')[1] || '') === normCo(company));
+  if (i < 0) throw new Error(`${company} not on the blacklist`);
+  ls.splice(i, 1);
+  backupInput(BLACKLIST);
+  writeFileAtomic(BLACKLIST, ls.join('\n'));
 }
 
 // ── Tracker write ────────────────────────────────────────────────────
@@ -443,6 +731,27 @@ const server = http.createServer(async (req, res) => {
       if (!rel) return json(res, 404, { error: `No ${what} on file for this role` });
       const abs = path.join(ROOT, rel);
       return json(res, 200, { ok: true, path: abs, revealed: reveal(abs) });
+    }
+
+    if (url.pathname === '/api/inputs') return json(res, 200, readInputs());
+
+    if (url.pathname.startsWith('/api/inputs/') && req.method === 'POST') {
+      const body = await readBody(req);
+      const op = url.pathname.slice('/api/inputs/'.length);
+      let result = { ok: true };
+      switch (op) {
+        case 'targeting': saveTargeting(body); break;
+        case 'title-filter': saveTitleFilter(body); break;
+        case 'company': result.entry = addCompany(body); break;
+        case 'company/toggle': setCompanyEnabled(String(body.name || ''), body.enabled !== false); break;
+        case 'company/remove': removeCompany(String(body.name || '')); break;
+        case 'pipeline': result.line = addPending(body); break;
+        case 'pipeline/remove': removePending(String(body.url || '')); break;
+        case 'blacklist': addBlacklist(body); break;
+        case 'blacklist/remove': removeBlacklist(String(body.company || '')); break;
+        default: return json(res, 404, { error: 'Unknown input op' });
+      }
+      return json(res, 200, { ...result, inputs: readInputs() });
     }
 
     if (url.pathname === '/api/tool') {

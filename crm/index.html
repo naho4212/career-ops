@@ -35,6 +35,48 @@ body{
 .tally{font-family:var(--mono);font-size:11.5px;color:var(--dim);letter-spacing:.02em}
 .tally b{color:var(--live);font-weight:600}
 .masthead .spacer{margin-left:auto}
+.tabs{display:flex;gap:2px;margin-left:6px}
+.tab{
+  background:transparent;border:1px solid transparent;border-radius:2px;padding:3px 10px;cursor:pointer;
+  color:var(--faint);font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+}
+.tab:hover{color:var(--text)}
+.tab[aria-selected="true"]{color:var(--text);border-color:var(--line);background:var(--raised)}
+
+/* ── Inputs view ────────────────────────────────────── */
+.inputs{flex:1;overflow:auto;min-height:0;padding:18px 20px 60px}
+.card{max-width:960px;margin:0 0 22px;border:1px solid var(--line);border-radius:2px;background:var(--panel)}
+.card-head{display:flex;align-items:baseline;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line)}
+.card-head h3{margin:0;font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--live);font-weight:600}
+.card-head .file{font-family:var(--mono);font-size:10px;color:var(--faint)}
+.card-head .n{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.card-body{padding:14px 16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px 16px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field>span{font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint)}
+.field>span small{text-transform:none;letter-spacing:0;color:var(--faint);margin-left:6px}
+.field input,.field textarea,.inline input{
+  background:var(--base);border:1px solid var(--line);border-radius:2px;color:var(--text);
+  padding:6px 9px;font-family:var(--mono);font-size:11.5px;line-height:1.5;width:100%;box-sizing:border-box;
+}
+.field textarea{resize:vertical;min-height:120px}
+.field input:focus,.field textarea:focus,.inline input:focus{outline:none;border-color:var(--faint)}
+.actions{display:flex;align-items:center;gap:12px;margin-top:12px}
+.actions .note{font-size:11px;color:var(--faint)}
+.inline{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.inline input{width:auto;flex:1}
+.list{border-top:1px solid var(--line);max-height:420px;overflow:auto}
+.item{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px;min-width:0}
+.item:last-child{border-bottom:0}
+.item .name{color:var(--text);font-weight:600;white-space:nowrap}
+.item .name a{color:inherit;text-decoration:none;border-bottom:1px dotted var(--faint)}
+.item .sub{color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.item .tag{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);border:1px solid var(--line);border-radius:2px;padding:1px 5px}
+.item.off .name,.item.off .sub{opacity:.45}
+.item input[type=checkbox]{accent-color:var(--live);margin:0}
+.item .x{margin-left:auto}
+.list .empty{padding:18px}
 .hint{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.04em}
 
 /* ── Attrition spine (signature) ────────────────────── */
@@ -97,6 +139,8 @@ body{
 .console .err{color:var(--s-rejected)}
 
 .main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.view-table{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+[hidden]{display:none!important}
 .toolbar{display:flex;gap:10px;align-items:center;padding:11px 20px;border-bottom:1px solid var(--line);flex:none}
 #q{
   flex:1;background:var(--panel);border:1px solid var(--line);border-radius:2px;
@@ -237,6 +281,10 @@ select.act{padding:3px 4px}
 <header class="masthead">
   <div class="wordmark">Career Ops</div>
   <div class="tally" id="tally">loading…</div>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-view="table" aria-selected="true">Pipeline</button>
+    <button class="tab" role="tab" data-view="inputs" aria-selected="false">Inputs</button>
+  </div>
   <div class="spacer"></div>
   <div class="hint">/ search &nbsp;·&nbsp; j k move &nbsp;·&nbsp; s skip &nbsp;·&nbsp; enter report</div>
 </header>
@@ -254,6 +302,7 @@ select.act{padding:3px 4px}
   </aside>
 
   <main class="main">
+    <div id="view-table" class="view-table">
     <div class="toolbar">
       <input id="q" type="search" placeholder="Filter by company, role, or note…" autocomplete="off">
       <span class="count" id="count"></span>
@@ -272,6 +321,89 @@ select.act{padding:3px 4px}
         <tbody id="rows"></tbody>
       </table>
       <div class="empty" id="empty" hidden><b>Nothing matches</b>Clear the filter or pick another status band.</div>
+    </div>
+    </div>
+
+    <div class="inputs" id="view-inputs" hidden>
+
+      <section class="card">
+        <div class="card-head"><h3>Targeting</h3><span class="file" id="f-profile">config/profile.yml</span></div>
+        <div class="card-body">
+          <div class="grid3">
+            <label class="field"><span>Primary roles <small>one per line</small></span><textarea id="in-primary"></textarea></label>
+            <label class="field"><span>Anti-target industries</span><textarea id="in-anti-ind"></textarea></label>
+            <label class="field"><span>Anti-target role shapes</span><textarea id="in-anti-shape"></textarea></label>
+          </div>
+          <div class="grid3" style="margin-top:12px">
+            <label class="field"><span>Comp target</span><input id="in-comp-target"></label>
+            <label class="field"><span>Comp minimum</span><input id="in-comp-min"></label>
+            <label class="field"><span>Location flexibility</span><input id="in-comp-flex"></label>
+          </div>
+          <div class="grid3" style="margin-top:12px;grid-template-columns:1fr 1fr 1fr 1fr">
+            <label class="field"><span>Country</span><input id="in-loc-country"></label>
+            <label class="field"><span>City</span><input id="in-loc-city"></label>
+            <label class="field"><span>Timezone</span><input id="in-loc-tz"></label>
+            <label class="field"><span>Visa status</span><input id="in-loc-visa"></label>
+          </div>
+          <div class="actions">
+            <button class="act primary" id="save-targeting">Save targeting</button>
+            <span class="note">Archetype notes and narrative stay in the file; edit those by hand.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h3>Target companies</h3><span class="file">portals.yml</span><span class="n" id="co-count"></span></div>
+        <div class="card-body">
+          <div class="inline">
+            <input id="co-name" placeholder="Company name" autocomplete="off">
+            <input id="co-url" placeholder="Careers URL (Ashby / Greenhouse / Lever get an API feed; anything else is web-searched)" autocomplete="off" style="flex:2">
+            <input id="co-notes" placeholder="Notes (optional)" autocomplete="off">
+            <button class="act primary" id="co-add">Add</button>
+          </div>
+          <div class="inline"><input id="co-q" placeholder="Filter companies…" autocomplete="off"></div>
+          <div class="list" id="co-list"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h3>Title filter</h3><span class="file">portals.yml</span></div>
+        <div class="card-body">
+          <div class="grid2">
+            <label class="field"><span>Positive <small>titles the scanner keeps</small></span><textarea id="in-tf-pos"></textarea></label>
+            <label class="field"><span>Negative <small>titles it drops</small></span><textarea id="in-tf-neg"></textarea></label>
+          </div>
+          <div class="actions"><button class="act primary" id="save-tf">Save title filter</button></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h3>Pipeline inbox</h3><span class="file">data/pipeline.md</span><span class="n" id="pl-count"></span></div>
+        <div class="card-body">
+          <div class="inline">
+            <input id="pl-url" placeholder="Posting URL" autocomplete="off" style="flex:2">
+            <input id="pl-co" placeholder="Company (optional)" autocomplete="off">
+            <input id="pl-title" placeholder="Title (optional)" autocomplete="off">
+            <button class="act primary" id="pl-add">Queue</button>
+          </div>
+          <div class="actions" style="margin:0 0 10px"><span class="note">Queued URLs are evaluated by <code>/career-ops pipeline</code> in your AI CLI; each becomes a row here.</span></div>
+          <div class="list" id="pl-list"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h3>Blacklist</h3><span class="file">data/blacklist.md</span><span class="n" id="bl-count"></span></div>
+        <div class="card-body">
+          <div class="inline">
+            <input id="bl-co" placeholder="Company" autocomplete="off">
+            <input id="bl-reason" placeholder="Reason" autocomplete="off" style="flex:2">
+            <button class="act primary" id="bl-add">Never again</button>
+          </div>
+          <div class="actions" style="margin:0 0 10px"><span class="note">Scans skip these companies; evaluate/apply stop and ask first. Never changes a score.</span></div>
+          <div class="list" id="bl-list"></div>
+        </div>
+      </section>
+
     </div>
   </main>
 </div>
@@ -447,6 +579,129 @@ async function revealFile(a, what){
   if (!out.ok) return toast(out.error, null, true);
   toast(out.revealed ? `Showing ${what} in Finder` : out.path);
 }
+
+// ── Views ───────────────────────────────────────────────
+function showView(v){
+  document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected', String(t.dataset.view===v)));
+  $('view-table').hidden = v !== 'table';
+  $('view-inputs').hidden = v !== 'inputs';
+  if (v === 'inputs' && !inputs) loadInputs();
+  try { localStorage.setItem('crm.view', v); } catch {}
+}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>showView(t.dataset.view)));
+
+// ── Inputs ──────────────────────────────────────────────
+let inputs = null;
+async function loadInputs(){
+  inputs = await (await fetch('/api/inputs')).json();
+  renderInputs();
+}
+async function postInput(op, body, okMsg){
+  const r = await fetch('/api/inputs/'+op, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
+  const out = await r.json();
+  if (!out.ok) { toast(out.error || 'Failed', null, true); return null; }
+  inputs = out.inputs; renderInputs();
+  if (okMsg) toast(okMsg);
+  return out;
+}
+const linesOf = el => el.value.split('\n').map(x=>x.trim()).filter(Boolean);
+
+function renderInputs(){
+  const t = inputs.targeting;
+  $('in-primary').value = t.primary.join('\n');
+  $('in-anti-ind').value = t.anti_industries.join('\n');
+  $('in-anti-shape').value = t.anti_role_shapes.join('\n');
+  $('in-comp-target').value = t.compensation.target_range;
+  $('in-comp-min').value = t.compensation.minimum;
+  $('in-comp-flex').value = t.compensation.location_flexibility;
+  $('in-loc-country').value = t.location.country; $('in-loc-city').value = t.location.city;
+  $('in-loc-tz').value = t.location.timezone; $('in-loc-visa').value = t.location.visa_status;
+  $('in-tf-pos').value = inputs.title_filter.positive.join('\n');
+  $('in-tf-neg').value = inputs.title_filter.negative.join('\n');
+  renderCompanies(); renderPending(); renderBlacklist();
+}
+
+// Two-click removal: the first click arms the button, the second removes.
+function armed(btn, label, fn){
+  btn.addEventListener('click', ()=>{
+    if (btn.dataset.armed){ fn(); return; }
+    btn.dataset.armed = '1'; btn.textContent = 'Confirm?';
+    setTimeout(()=>{ delete btn.dataset.armed; btn.textContent = label; }, 2500);
+  });
+}
+
+function renderCompanies(){
+  const q = $('co-q').value.trim().toLowerCase();
+  const all = inputs.companies;
+  const on = all.filter(c=>c.enabled).length;
+  $('co-count').textContent = `${all.length} tracked · ${on} enabled`;
+  const list = all.filter(c => !q || (c.name+' '+c.notes+' '+c.careers_url).toLowerCase().includes(q));
+  $('co-list').innerHTML = list.length ? list.map((c,i)=>`
+    <div class="item ${c.enabled?'':'off'}" data-i="${i}">
+      <input type="checkbox" ${c.enabled?'checked':''} title="Include in scans" aria-label="Enable ${esc(c.name)}">
+      <span class="name">${c.careers_url ? `<a href="${esc(c.careers_url)}" target="_blank" rel="noopener">${esc(c.name)}</a>` : esc(c.name)}</span>
+      <span class="tag">${esc(c.method)}</span>
+      <span class="sub" title="${esc(c.notes)}">${esc(c.notes)}</span>
+      <button class="act x" data-act="rm">Remove</button>
+    </div>`).join('') : '<div class="empty">No companies match.</div>';
+  $('co-list').querySelectorAll('.item').forEach(el=>{
+    const c = list[+el.dataset.i];
+    el.querySelector('input').addEventListener('change', e=>postInput('company/toggle', { name:c.name, enabled:e.target.checked }, `${c.name} ${e.target.checked?'enabled':'paused'}`));
+    armed(el.querySelector('[data-act="rm"]'), 'Remove', ()=>postInput('company/remove', { name:c.name }, `Removed ${c.name} from portals.yml`));
+  });
+}
+function renderPending(){
+  const p = inputs.pending;
+  $('pl-count').textContent = `${p.length} queued`;
+  $('pl-list').innerHTML = p.length ? p.map((x,i)=>`
+    <div class="item" data-i="${i}">
+      <span class="name">${esc(x.company||'—')}</span>
+      <span class="sub"><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title||x.url)}</a></span>
+      <button class="act x" data-act="rm">Drop</button>
+    </div>`).join('') : '<div class="empty">Nothing queued. Paste a posting URL above.</div>';
+  $('pl-list').querySelectorAll('.item').forEach(el=>{
+    const x = p[+el.dataset.i];
+    armed(el.querySelector('[data-act="rm"]'), 'Drop', ()=>postInput('pipeline/remove', { url:x.url }, 'Dropped from pipeline'));
+  });
+}
+function renderBlacklist(){
+  const b = inputs.blacklist;
+  $('bl-count').textContent = `${b.length} listed`;
+  $('bl-list').innerHTML = b.length ? b.map((x,i)=>`
+    <div class="item" data-i="${i}">
+      <span class="name">${esc(x.company)}</span>
+      <span class="tag">${esc(x.since)}</span>
+      <span class="sub">${esc(x.reason)}</span>
+      <button class="act x" data-act="rm">Remove</button>
+    </div>`).join('') : '<div class="empty">Empty. Scans and evaluations run unfiltered.</div>';
+  $('bl-list').querySelectorAll('.item').forEach(el=>{
+    const x = b[+el.dataset.i];
+    armed(el.querySelector('[data-act="rm"]'), 'Remove', ()=>postInput('blacklist/remove', { company:x.company }, `${x.company} un-blacklisted`));
+  });
+}
+
+$('save-targeting').addEventListener('click', ()=>postInput('targeting', {
+  primary: linesOf($('in-primary')), anti_industries: linesOf($('in-anti-ind')), anti_role_shapes: linesOf($('in-anti-shape')),
+  compensation: { target_range: $('in-comp-target').value, minimum: $('in-comp-min').value, location_flexibility: $('in-comp-flex').value },
+  location: { country: $('in-loc-country').value, city: $('in-loc-city').value, timezone: $('in-loc-tz').value, visa_status: $('in-loc-visa').value },
+}, 'Targeting saved to config/profile.yml'));
+$('save-tf').addEventListener('click', ()=>postInput('title-filter', { positive: linesOf($('in-tf-pos')), negative: linesOf($('in-tf-neg')) }, 'Title filter saved to portals.yml'));
+$('co-add').addEventListener('click', async ()=>{
+  const out = await postInput('company', { name:$('co-name').value, careers_url:$('co-url').value, notes:$('co-notes').value });
+  if (out){ toast(`${out.entry.name} added (${out.entry.api?'API feed':'web search'})`); ['co-name','co-url','co-notes'].forEach(id=>$(id).value=''); }
+});
+$('co-q').addEventListener('input', renderCompanies);
+$('pl-add').addEventListener('click', async ()=>{
+  const out = await postInput('pipeline', { url:$('pl-url').value, company:$('pl-co').value, title:$('pl-title').value }, 'Queued — run /career-ops pipeline to evaluate');
+  if (out) ['pl-url','pl-co','pl-title'].forEach(id=>$(id).value='');
+});
+$('bl-add').addEventListener('click', async ()=>{
+  const out = await postInput('blacklist', { company:$('bl-co').value, reason:$('bl-reason').value });
+  if (out){ toast(`${$('bl-co').value.trim()} blacklisted`); $('bl-co').value=''; $('bl-reason').value=''; }
+});
+['co-name','co-url','co-notes'].forEach(id=>$(id).addEventListener('keydown', e=>{ if (e.key==='Enter') $('co-add').click(); }));
+['pl-url','pl-co','pl-title'].forEach(id=>$(id).addEventListener('keydown', e=>{ if (e.key==='Enter') $('pl-add').click(); }));
+['bl-co','bl-reason'].forEach(id=>$(id).addEventListener('keydown', e=>{ if (e.key==='Enter') $('bl-add').click(); }));
 
 let toastTimer;
 function toast(msg, undo, isErr){
@@ -650,6 +905,7 @@ $('q').addEventListener('input', ()=>{ cursor=0; render(); });
 $('drawer-close').addEventListener('click', closeDrawer);
 
 load().then(renderTools);
+try { if (localStorage.getItem('crm.view') === 'inputs') showView('inputs'); } catch {}
 </script>
 </body>
 </html>

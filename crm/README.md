@@ -36,6 +36,22 @@ step; it does not crash. Point it at another checkout with
   a new tab. The PDF is resolved from `data/pdf-index.tsv`, then the report's
   `**PDF:**` line, then a company-slug match in `output/*.pdf` (newest wins).
 
+## Inputs tab
+
+The **Inputs** tab (masthead toggle, remembered per browser) edits the user-layer
+files that steer scoring and scanning. Every write is a line-level patch —
+the block you changed is replaced, every other byte (including comments) is
+left alone — and the result is parsed before it is written, so a bad patch
+never lands. First write per file per server run leaves `{file}.crm-{date}.bak`.
+
+| Section | File | Edits |
+|---|---|---|
+| Targeting | `config/profile.yml` | `target_roles.primary`, `anti_targets.industries` / `role_shapes`, `compensation.*`, `location.*`. Archetype notes and narrative are left to hand-editing. |
+| Target companies | `portals.yml` | Add (Ashby / Greenhouse / Lever careers URLs get a zero-token `api` feed inferred from the slug; anything else becomes a `websearch` entry), pause/enable, remove (two-click confirm). |
+| Title filter | `portals.yml` | `title_filter.positive` / `negative`. |
+| Pipeline inbox | `data/pipeline.md` | Queue a posting URL (dedup on URL); drop it. Evaluation still runs via `/career-ops pipeline` in the AI CLI — `pipeline` is a mode, not a script. |
+| Blacklist | `data/blacklist.md` | Add / remove companies. File is created on first add; `scan.mjs` and the evaluate/apply gates already honour it. |
+
 ## Two independent update channels
 
 This fork receives updates from two places, and they do not collide:
