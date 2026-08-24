@@ -613,6 +613,13 @@ const TOOLS = {
       `Evaluate this JD with career-ops auto-pipeline: ${url}\nWrite the report and tracker TSV, run \`node merge-tracker.mjs\`, then mark this URL's line in data/pipeline.md as done (\`- [x]\`). Finish with one line: the score and the report path.`],
     blurb: 'Evaluate one queued URL',
   },
+  // Tailored CV for one report, from the drawer's Generate CV button.
+  pdf: {
+    label: 'Generate CV', bin: 'claude', listed: false,
+    argv: ({ num, report }) => ['-p', '--dangerously-skip-permissions',
+      `Run career-ops pdf mode for report #${num} (${report}). Generate the tailored CV PDF into output/ and pass --report=${num} to generate-pdf.mjs so data/pdf-index.tsv links it to the report. Do not apply or submit anything. Finish with one line: the PDF path.`],
+    blurb: 'Tailored CV for one report',
+  },
   verify: { label: 'Verify pipeline', argv: ['verify-pipeline.mjs'], blurb: 'Health-check the tracker' },
   merge: { label: 'Merge tracker', argv: ['merge-tracker.mjs'], blurb: 'Fold in pending TSV additions' },
   dedup: { label: 'Dedup tracker', argv: ['dedup-tracker.mjs'], blurb: 'Collapse duplicate rows' },
@@ -629,6 +636,15 @@ function streamTool(key, res, params = {}) {
   if (key === 'evaluate' && !/^https?:\/\//.test(params.url || '')) {
     res.writeHead(400, { 'Content-Type': 'text/plain' });
     return res.end('evaluate needs a http(s) url');
+  }
+  if (key === 'pdf') {
+    const row = readTracker().rows.find((r) => r.num === Number(params.num));
+    const file = row && resolveReport(row.report);
+    if (!file) {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      return res.end('pdf needs a tracker row with a report');
+    }
+    params = { num: reportNum(row) ?? row.num, report: path.relative(ROOT, file) };
   }
   const argv = typeof tool.argv === 'function' ? tool.argv(params) : tool.argv;
   res.writeHead(200, {
@@ -778,7 +794,31 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url.pathname === '/api/tool') {
-      return streamTool(url.searchParams.get('name'), res, { url: url.searchParams.get('url') || '' });
+      return streamTool(url.searchParams.get('name'), res, { url: url.searchParams.get('url') || '', num: url.searchParams.get('num') || '' });
+    }
+
+    // Is the Claude CLI installed, and (with ?ping=1) does a headless round
+    // trip actually work? The ping costs one tiny request; the version check
+    // is free. Both use the same stripped env the tools use.
+    if (url.pathname === '/api/claude-status') {
+      const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^CLAUDE(CODE|_)/.test(k)));
+      const run = (args, ms) => new Promise((resolve) => {
+        let out = '', err = '';
+        const t = Date.now();
+        const c = spawn('claude', args, { cwd: ROOT, env });
+        const timer = setTimeout(() => c.kill(), ms);
+        c.stdout.on('data', (d) => { out += d; });
+        c.stderr.on('data', (d) => { err += d; });
+        c.on('error', (e) => { clearTimeout(timer); resolve({ code: -1, out: '', err: e.message, ms: Date.now() - t }); });
+        c.on('close', (code) => { clearTimeout(timer); resolve({ code, out: out.trim(), err: err.trim(), ms: Date.now() - t }); });
+      });
+      const v = await run(['--version'], 10000);
+      const status = { installed: v.code === 0, version: v.code === 0 ? v.out.split(/\s/)[0] : null, error: v.code === 0 ? null : (v.err || 'claude not found on PATH') };
+      if (status.installed && url.searchParams.get('ping')) {
+        const p = await run(['-p', 'Reply with exactly: OK', '--max-turns', '1'], 60000);
+        status.ping = { ok: p.code === 0 && /\bOK\b/.test(p.out), ms: p.ms, reply: (p.out || p.err).slice(0, 200) };
+      }
+      return json(res, 200, status);
     }
 
     res.writeHead(404, { 'Content-Type': 'text/plain' });

@@ -40,7 +40,10 @@ rows: no number, score, report, or status change until they are evaluated.
   or drawer (search, tools, filters) collapses it. The report header renders
   as a key/value grid; its `PDF` row is a link to the CV plus **Show in
   Finder** (the PDF is what gets uploaded to an ATS; macOS-only, elsewhere the
-  toast shows the path). Tables, lists and section rules render properly.
+  toast shows the path). When no CV exists the row offers **Generate CV**,
+  which runs `pdf` mode headless for that report (with `--report=N` so
+  `pdf-index.tsv` links it) and refreshes the drawer when done. Tables, lists
+  and section rules render properly.
 - **PDF** appears on rows with a CV PDF and is a link that opens it inline in
   a new tab. The PDF is resolved from `data/pdf-index.tsv`, then the report's
   `**PDF:**` line, then a company-slug match in `output/*.pdf` (newest wins).
@@ -50,6 +53,11 @@ rows: no number, score, report, or status change until they are evaluated.
 Seven tools run from the **Tools** tab, streamed live over SSE: `scan`,
 **Run pipeline**, `verify-pipeline`, `merge-tracker`, `dedup-tracker`,
 `analyze-patterns --summary`, `followup-cadence --summary`.
+
+A status strip at the top of the tab shows whether the Claude CLI is installed
+(version check, free, runs when the tab opens) and **Ping** does a real
+headless round trip (`claude -p "Reply with exactly: OK"`, one tiny request,
+~5–10s) to confirm auth and connectivity before you launch a long run.
 
 **Run pipeline** is different from the rest: `pipeline` is an LLM mode, so the
 tool drives the Claude CLI headless — `claude -p --dangerously-skip-permissions

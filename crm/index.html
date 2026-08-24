@@ -126,6 +126,14 @@ body{
 .tool small{display:block;color:var(--faint);font-size:11px;margin-top:2px}
 .tool .last{display:block;font-family:var(--mono);font-size:10px;color:var(--faint);margin-top:4px}
 .tool .last.ok{color:var(--s-interview)} .tool .last.err{color:var(--s-rejected)}
+.claude-status{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 6px;padding:8px 16px 10px;border-bottom:1px solid var(--line);
+  font-family:var(--mono);font-size:10.5px;color:var(--dim);
+}
+.claude-status .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
+.claude-status .dot.ok{background:var(--s-interview)} .claude-status .dot.err{background:var(--s-rejected)} .claude-status .dot.busy{background:var(--s-applied)}
+.claude-status .muted{color:var(--faint)}
+.claude-status .act{margin-left:auto}
 .tool-out{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
 .tool-out-head{
   display:flex;align-items:center;gap:10px;padding:11px 20px;border-bottom:1px solid var(--line);
@@ -423,7 +431,10 @@ select.act{padding:3px 4px}
     </div>
 
     <div class="tools" id="view-tools" hidden>
-      <div class="tool-list" id="tools"></div>
+      <div class="tool-list">
+        <div class="claude-status" id="claude-status"><span class="muted">Claude CLI: checking…</span></div>
+        <div id="tools"></div>
+      </div>
       <div class="tool-out">
         <div class="tool-out-head" id="tool-head"><span class="muted">Pick a tool to run. Output appears here.</span></div>
         <div class="console" id="console"></div>
@@ -636,6 +647,7 @@ function showView(v){
   $('view-inputs').hidden = v !== 'inputs';
   $('view-tools').hidden = v !== 'tools';
   if (v === 'inputs' && !inputs) loadInputs();
+  if (v === 'tools' && !claudeChecked) checkClaude(false);
   try { localStorage.setItem('crm.view', v); } catch {}
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>showView(t.dataset.view)));
@@ -832,7 +844,7 @@ function renderReport(src, a){
     if (key === 'pdf'){
       val = a.pdf
         ? `<a href="/api/pdf?num=${a.num}" target="_blank" rel="noopener" title="Open CV">${esc(a.pdf.replace(/^output\//,''))}</a><button class="act" id="drawer-reveal">Show in Finder</button>`
-        : `<span class="muted">${inline(v)}</span>`;
+        : `<span class="muted">${inline(v)}</span><button class="act" id="drawer-gen-cv" title="Run pdf mode for this report (Claude, headless)">Generate CV</button>`;
     } else if (key === 'score'){ val = inline(v); cls = ' class="score"'; }
     else val = inline(v);
     return `<dt>${esc(k)}</dt><dd${cls}>${val}</dd>`;
@@ -877,6 +889,10 @@ async function openReport(a){
     ? renderReport(out.markdown, a)
     : `<p>${esc(out.error||'No report on file.')}</p>`;
   $('drawer-reveal')?.addEventListener('click', ()=>revealFile(a, 'pdf'));
+  $('drawer-gen-cv')?.addEventListener('click', ()=>{
+    if (running) return toast(`${running} is still running — wait for it to finish`, null, true);
+    showView('tools'); runTool('pdf', { num:a.num, label:`Generate CV · ${a.company}` });
+  });
 }
 function closeDrawer(){
   drawerNum = null;
@@ -892,6 +908,23 @@ document.addEventListener('mousedown', e=>{
 });
 
 // ── Tools ───────────────────────────────────────────────
+let claudeChecked = false;
+// Version check is free; ping is a real headless round trip (~5s, one tiny request).
+async function checkClaude(ping){
+  claudeChecked = true;
+  const el = $('claude-status');
+  el.innerHTML = `<span class="dot busy"></span><span>Claude CLI: ${ping?'pinging…':'checking…'}</span>`;
+  let st;
+  try { st = await (await fetch('/api/claude-status'+(ping?'?ping=1':''))).json(); }
+  catch { st = { installed:false, error:'status request failed' }; }
+  const btn = `<button class="act" id="claude-ping">${ping?'Ping again':'Ping'}</button>`;
+  if (!st.installed) el.innerHTML = `<span class="dot err"></span><span>Claude CLI not found</span><span class="muted">${esc(st.error||'')}</span>${btn}`;
+  else if (!st.ping) el.innerHTML = `<span class="dot ok"></span><span>Claude CLI v${esc(st.version)}</span><span class="muted">installed · not pinged</span>${btn}`;
+  else if (st.ping.ok) el.innerHTML = `<span class="dot ok"></span><span>Claude CLI v${esc(st.version)}</span><span class="muted">online · ${(st.ping.ms/1000).toFixed(1)}s round trip</span>${btn}`;
+  else el.innerHTML = `<span class="dot err"></span><span>Claude CLI v${esc(st.version)}</span><span class="muted">ping failed: ${esc(st.ping.reply||'no reply')}</span>${btn}`;
+  $('claude-ping')?.addEventListener('click', ()=>checkClaude(true));
+}
+
 const lastRun = {}; // key -> {code, when, secs}
 function renderTools(){
   $('tools').innerHTML = state.tools.map(t=>{
@@ -933,7 +966,7 @@ function runTool(key, params){
   $('tool-head').innerHTML = `<span class="spin"></span><b>${esc(tool.label)}</b><span class="muted">running…</span>`;
   $('tool-foot').hidden = true;
   document.querySelectorAll('.tool').forEach(b=>{ b.disabled = true; b.setAttribute('aria-current', String(b.dataset.k===key)); });
-  const qs = params?.url ? '&url='+encodeURIComponent(params.url) : '';
+  const qs = ['url','num'].filter(k=>params?.[k]).map(k=>`&${k}=`+encodeURIComponent(params[k])).join('');
   const es = new EventSource('/api/tool?name='+encodeURIComponent(key)+qs);
   const push = (raw) => {
     const { cls, text } = classify(raw);
@@ -958,7 +991,11 @@ function runTool(key, params){
     es.close(); running = null;
     renderTools();
     document.querySelectorAll('.tool').forEach(b=>b.setAttribute('aria-current', String(b.dataset.k===key)));
-    load(); // tools mutate the tracker/pipeline — pull fresh numbers
+    load().then(()=>{ // tools mutate the tracker/pipeline — pull fresh numbers
+      // A CV or evaluation may have changed what the open report shows.
+      const a = state.applications.find(x=>x.num===drawerNum);
+      if (drawerOpen() && a){ drawerNum = null; openReport(a); }
+    });
   };
   es.addEventListener('done', e => finish(JSON.parse(e.data).code));
   es.onerror = () => finish(1, 'Lost connection to the tool');
