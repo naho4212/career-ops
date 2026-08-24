@@ -28,8 +28,9 @@ step; it does not crash. Point it at another checkout with
   clickable too.
 - **Report** opens the drawer. While it is out, clicking another row or moving
   with `j`/`k` swaps in that row's report; clicking anywhere outside the table
-  or drawer (search, tools, filters) collapses it. The `File:` line at the top
-  of the report has **Show in Finder** (macOS-only; elsewhere the toast shows
+  or drawer (search, tools, filters) collapses it. When the row has a CV PDF,
+  a `CV:` line at the top of the report names it with **Show in Finder** (the
+  PDF is what gets uploaded to an ATS; macOS-only, elsewhere the toast shows
   the path).
 - **PDF** appears on rows with a CV PDF and is a link that opens it inline in
   a new tab. The PDF is resolved from `data/pdf-index.tsv`, then the report's

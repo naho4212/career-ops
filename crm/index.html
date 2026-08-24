@@ -483,14 +483,15 @@ async function openReport(a){
   const out = await r.json();
   if (drawerNum !== a.num) return; // user moved on while this was loading
   $('drawer-path').textContent = out.path || '';
-  // File line at the top of the report, beside URL/PDF, with the Finder action.
-  const fileLine = out.path
-    ? `<p class="file-line"><strong>File:</strong> <code>${esc(out.path)}</code> <button class="act" id="drawer-reveal">Show in Finder</button></p>`
+  // CV line at the top of the report: the PDF is what gets uploaded to an ATS,
+  // so that is the file worth revealing in Finder. Rows without a PDF get no line.
+  const fileLine = a.pdf
+    ? `<p class="file-line"><strong>CV:</strong> <code>${esc(a.pdf)}</code> <button class="act" id="drawer-reveal">Show in Finder</button></p>`
     : '';
   $('drawer-body').innerHTML = out.markdown
     ? fileLine + md(out.markdown)
     : `<p>${esc(out.error||'No report on file.')}</p>`;
-  $('drawer-reveal')?.addEventListener('click', ()=>revealFile(a, 'report'));
+  $('drawer-reveal')?.addEventListener('click', ()=>revealFile(a, 'pdf'));
 }
 function closeDrawer(){
   drawerNum = null;
