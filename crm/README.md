@@ -27,7 +27,7 @@ This fork receives updates from two places, and they do not collide:
 
 | What | Comes from | How |
 |---|---|---|
-| career-ops system (modes, scripts, templates) | `santifer/career-ops` | `node update-system.mjs apply` |
+| career-ops system (modes, scripts, templates) | `santifer/career-ops` | `node update-system.mjs apply --confirm` |
 | this CRM (`crm/`) | this fork's `origin` | `git pull` |
 
 Why they cannot break each other:
