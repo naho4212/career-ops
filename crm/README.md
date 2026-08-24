@@ -21,6 +21,22 @@ Fresh clone with no tracker yet? The board opens empty and tells you the next
 step; it does not crash. Point it at another checkout with
 `CAREER_OPS_ROOT=/path/to/career-ops node crm/server.mjs`.
 
+## Row actions
+
+- **Role name** links to the posting (read from the report's `**URL:**` line;
+  the tracker itself has no URL column). URLs inside the report drawer are
+  clickable too.
+- **Report** opens the drawer. While it is out, clicking another row or moving
+  with `j`/`k` swaps in that row's report; clicking anywhere outside the table
+  or drawer (search, tools, filters) collapses it. **Show file** in the drawer
+  header reveals the report in Finder.
+- **PDF / Save / Show** appear on rows with a CV PDF. `PDF` opens it inline in
+  a new tab; `Save` copies it to `~/Desktop` (never overwrites: `name-2.pdf`,
+  `name-3.pdf`…) so it is one drag from an upload field; `Show` reveals it in
+  Finder. The PDF is resolved from `data/pdf-index.tsv`, then the report's
+  `**PDF:**` line, then a company-slug match in `output/*.pdf` (newest wins).
+  Reveal is macOS-only; elsewhere the toast shows the path instead.
+
 ## Two independent update channels
 
 This fork receives updates from two places, and they do not collide:

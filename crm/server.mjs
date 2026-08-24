@@ -15,8 +15,9 @@
  */
 
 import http from 'node:http';
-import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, statSync, readdirSync, createReadStream } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { load as yamlLoad } from 'js-yaml';
@@ -38,6 +39,8 @@ const ROOT = process.env.CAREER_OPS_ROOT
 const TRACKER = path.join(ROOT, 'data', 'applications.md');
 const PIPELINE = path.join(ROOT, 'data', 'pipeline.md');
 const STATES = path.join(ROOT, 'templates', 'states.yml');
+const OUTPUT = path.join(ROOT, 'output');
+const PDF_INDEX = path.join(ROOT, 'data', 'pdf-index.tsv');
 
 const portArgIdx = process.argv.indexOf('--port');
 const PORT = portArgIdx > -1 ? Number(process.argv[portArgIdx + 1]) : 7788;
@@ -100,6 +103,102 @@ function resolveReport(link) {
     if (existsSync(resolved)) return resolved;
   }
   return null;
+}
+
+// ── Report metadata + PDF resolution ─────────────────────────────────
+// The tracker has no URL column; the posting URL lives in each report's
+// header (`**URL:** …`). Read the header once per report and cache by mtime
+// so /api/state stays cheap across 350+ rows.
+const metaCache = new Map();
+function reportMeta(row) {
+  const file = resolveReport(row.report);
+  if (!file) return { url: '', pdfLine: '', reportFile: null };
+  const mtime = statSync(file).mtimeMs;
+  const hit = metaCache.get(file);
+  if (hit && hit.mtime === mtime) return hit.meta;
+  const head = readFileSync(file, 'utf8').split('\n').slice(0, 25);
+  const grab = (label) => {
+    const l = head.find((x) => x.startsWith(`**${label}:**`));
+    return l ? l.slice(label.length + 5).trim() : '';
+  };
+  const meta = { url: grab('URL'), pdfLine: grab('PDF'), reportFile: file };
+  metaCache.set(file, { mtime, meta });
+  return meta;
+}
+
+function reportNum(row) {
+  const m = /\[(\d+)\]/.exec(row.report || '');
+  return m ? Number(m[1]) : null;
+}
+
+function slug(text) {
+  return String(text).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function insideRoot(p) {
+  return p.startsWith(ROOT + path.sep) && existsSync(p);
+}
+
+/**
+ * Find the CV PDF for a tracker row. Three sources, most authoritative first:
+ * 1. data/pdf-index.tsv (written by generate-pdf.mjs --report=N)
+ * 2. the report's own `**PDF:** …/output/….pdf` line
+ * 3. a company-slug match in output/*.pdf (newest wins)
+ * The pdf-index's report column is often blank on older rows, which is why
+ * the fallbacks exist. Returns a ROOT-relative path or null.
+ */
+function resolvePdf(row, meta) {
+  const num = reportNum(row);
+  if (num != null && existsSync(PDF_INDEX)) {
+    for (const line of readFileSync(PDF_INDEX, 'utf8').split('\n')) {
+      if (!line || line.startsWith('#')) continue;
+      const [rep, pdf] = line.split('\t');
+      if (rep && Number(rep) === num && pdf) {
+        const abs = path.resolve(ROOT, pdf);
+        if (insideRoot(abs)) return path.relative(ROOT, abs);
+      }
+    }
+  }
+  const m = /(?:^|\/)(output\/[^\s)]+\.pdf)/.exec(meta.pdfLine || '');
+  if (m) {
+    const abs = path.resolve(ROOT, m[1]);
+    if (insideRoot(abs)) return path.relative(ROOT, abs);
+  }
+  if (existsSync(OUTPUT)) {
+    const s = slug(row.company);
+    if (s) {
+      const hits = readdirSync(OUTPUT)
+        .filter((f) => f.endsWith('.pdf') && f.includes(`-${s}-`))
+        .map((f) => ({ f, t: statSync(path.join(OUTPUT, f)).mtimeMs }))
+        .sort((a, b) => b.t - a.t);
+      if (hits.length) return path.join('output', hits[0].f);
+    }
+  }
+  return null;
+}
+
+function rowByNum(url) {
+  const { rows } = readTracker();
+  return rows.find((r) => r.num === Number(url.searchParams.get('num'))) || null;
+}
+
+/** Copy to ~/Desktop without clobbering: name.pdf, name-2.pdf, name-3.pdf… */
+function saveToDesktop(abs) {
+  const desktop = path.join(os.homedir(), 'Desktop');
+  if (!existsSync(desktop)) mkdirSync(desktop, { recursive: true });
+  const ext = path.extname(abs);
+  const base = path.basename(abs, ext);
+  let dest = path.join(desktop, base + ext);
+  for (let i = 2; existsSync(dest); i++) dest = path.join(desktop, `${base}-${i}${ext}`);
+  copyFileSync(abs, dest);
+  return dest;
+}
+
+/** Reveal in the OS file manager. macOS only; elsewhere the caller gets the path. */
+function reveal(abs) {
+  if (process.platform !== 'darwin') return false;
+  spawn('open', ['-R', abs], { stdio: 'ignore', detached: true }).unref();
+  return true;
 }
 
 // ── Tracker write ────────────────────────────────────────────────────
@@ -264,7 +363,10 @@ const server = http.createServer(async (req, res) => {
       const counts = {};
       for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1;
       return json(res, 200, {
-        applications: rows.map(({ raw, line, ...r }) => r),
+        applications: rows.map(({ raw, line, ...r }) => {
+          const meta = reportMeta(r);
+          return { ...r, url: meta.url, pdf: resolvePdf(r, meta) };
+        }),
         states: STATE_LIST,
         counts,
         pending: pipelinePending(),
@@ -290,6 +392,41 @@ const server = http.createServer(async (req, res) => {
       const file = row ? resolveReport(row.report) : null;
       if (!file) return json(res, 404, { error: 'No report on file for this role' });
       return json(res, 200, { markdown: readFileSync(file, 'utf8'), path: path.relative(ROOT, file) });
+    }
+
+    // View inline (default) or force a browser download (?download=1).
+    if (url.pathname === '/api/pdf') {
+      const row = rowByNum(url);
+      const rel = row && resolvePdf(row, reportMeta(row));
+      if (!rel) return json(res, 404, { error: 'No PDF on file for this role' });
+      const abs = path.join(ROOT, rel);
+      const disp = url.searchParams.get('download') ? 'attachment' : 'inline';
+      res.writeHead(200, {
+        'Content-Type': 'application/pdf',
+        'Content-Length': statSync(abs).size,
+        'Content-Disposition': `${disp}; filename="${path.basename(abs)}"`,
+      });
+      return createReadStream(abs).pipe(res);
+    }
+
+    if (url.pathname === '/api/pdf/save' && req.method === 'POST') {
+      const row = rowByNum(url);
+      const rel = row && resolvePdf(row, reportMeta(row));
+      if (!rel) return json(res, 404, { error: 'No PDF on file for this role' });
+      const dest = saveToDesktop(path.join(ROOT, rel));
+      return json(res, 200, { ok: true, path: dest, display: dest.replace(os.homedir(), '~') });
+    }
+
+    if (url.pathname === '/api/reveal' && req.method === 'POST') {
+      const row = rowByNum(url);
+      if (!row) return json(res, 404, { error: 'Unknown row' });
+      const what = url.searchParams.get('what');
+      if (what !== 'pdf' && what !== 'report') return json(res, 400, { error: 'what must be pdf or report' });
+      const meta = reportMeta(row);
+      const rel = what === 'report' ? (meta.reportFile && path.relative(ROOT, meta.reportFile)) : resolvePdf(row, meta);
+      if (!rel) return json(res, 404, { error: `No ${what} on file for this role` });
+      const abs = path.join(ROOT, rel);
+      return json(res, 200, { ok: true, path: abs, revealed: reveal(abs) });
     }
 
     if (url.pathname === '/api/tool') {

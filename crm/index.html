@@ -134,7 +134,11 @@ tbody tr.closed:hover td{color:var(--dim)}
 .c-status{width:100px}
 /* Fits Report + the Status select together; below ~176px the select's chevron
    gets cut off on rows that have a report. */
-.c-act{width:176px;text-align:right;white-space:nowrap}
+.c-act{width:300px;text-align:right;white-space:nowrap}
+.c-act .act.pdf{color:var(--dim)}
+.c-role a{color:inherit;text-decoration:none;border-bottom:1px dotted var(--faint)}
+.c-role a:hover{color:var(--text);border-bottom-color:var(--text)}
+.c-role a::after{content:' \2197';font-size:10px;color:var(--faint)}
 /* Sortable headers. The button inherits the th's type styling so the header
    still reads as a label, not a control, until you hover it. */
 /* The whole heading must be the click target. Giving the button width:100% is
@@ -164,7 +168,6 @@ thead th[aria-sort] .arrow{opacity:1}
 .act.primary{border-color:var(--faint);color:var(--text)}
 /* Status stays visible on every row — it is the primary action. Report is
    secondary and only surfaces on the row you are pointing at. */
-tbody tr:not(:hover):not(.sel) .act[data-act="report"]{opacity:0}
 tbody tr:focus-within .act{opacity:1}
 select.act{padding:3px 4px}
 
@@ -260,6 +263,7 @@ select.act{padding:3px 4px}
   <div class="drawer-head">
     <h2 id="drawer-title">Report</h2>
     <span class="path" id="drawer-path"></span>
+    <button class="act" id="drawer-reveal" title="Show report file in Finder">Show file</button>
     <button class="act" id="drawer-close">Close</button>
   </div>
   <div class="drawer-body" id="drawer-body"></div>
@@ -371,12 +375,15 @@ function render(){
       <td class="c-num">${a.num}</td>
       <td class="c-date">${esc(a.date)}</td>
       <td class="c-co">${esc(a.company)}</td>
-      <td class="c-role"><span title="${esc(a.notes)}">${esc(a.role)}</span></td>
+      <td class="c-role"><span title="${esc(a.notes)}">${a.url
+        ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.role)}</a>`
+        : esc(a.role)}</span></td>
       <td class="c-score" style="color:${scoreDim}">${esc((a.score||'').replace('/5',''))}</td>
       <td class="c-status"><span class="pill" style="color:${COLOR[a.status]||'var(--dim)'};
         border-color:${COLOR[a.status]||'var(--line)'}">${esc(a.status)}</span></td>
       <td class="c-act">
         ${a.report && a.report!=='—' ? `<button class="act" data-act="report">Report</button>`:''}
+        ${a.pdf ? `<button class="act pdf" data-act="pdf-view" title="${esc(a.pdf)}">PDF</button><button class="act pdf" data-act="pdf-save" title="Copy to ~/Desktop">Save</button><button class="act pdf" data-act="pdf-reveal" title="Show in Finder">Show</button>`:''}
         <select class="act primary" data-act="set" aria-label="Change status for ${esc(a.company)}">
           <option value="">Status…</option>
           ${opts.filter(o=>o!==a.status).map(o=>`<option>${esc(o)}</option>`).join('')}
@@ -386,8 +393,11 @@ function render(){
 
   $('rows').querySelectorAll('tr').forEach(tr=>{
     const a = view[+tr.dataset.i];
-    tr.addEventListener('mousedown', ()=>{ cursor=+tr.dataset.i; paintCursor(); });
+    tr.addEventListener('mousedown', ()=>{ cursor=+tr.dataset.i; paintCursor(); followDrawer(); });
     tr.querySelector('[data-act="report"]')?.addEventListener('click', ()=>openReport(a));
+    tr.querySelector('[data-act="pdf-view"]')?.addEventListener('click', ()=>window.open('/api/pdf?num='+a.num, '_blank'));
+    tr.querySelector('[data-act="pdf-save"]')?.addEventListener('click', ()=>savePdf(a));
+    tr.querySelector('[data-act="pdf-reveal"]')?.addEventListener('click', ()=>revealFile(a, 'pdf'));
     tr.querySelector('[data-act="set"]')?.addEventListener('change', e=>{
       if (e.target.value) setStatus(a, e.target.value);
     });
@@ -418,6 +428,21 @@ async function setStatus(a, status, isUndo){
   toast(`${a.company} → ${status}`, ()=>setStatus(a, prev, true));
 }
 
+// Copies the CV PDF to ~/Desktop so it's one drag away from an upload field,
+// instead of hunting through output/. Never overwrites: name-2.pdf, name-3.pdf…
+async function savePdf(a){
+  const r = await fetch('/api/pdf/save?num='+a.num, { method:'POST' });
+  const out = await r.json();
+  if (!out.ok) return toast(out.error, null, true);
+  toast(`Saved ${out.display}`);
+}
+async function revealFile(a, what){
+  const r = await fetch(`/api/reveal?num=${a.num}&what=${what}`, { method:'POST' });
+  const out = await r.json();
+  if (!out.ok) return toast(out.error, null, true);
+  toast(out.revealed ? `Showing ${what} in Finder` : out.path);
+}
+
 let toastTimer;
 function toast(msg, undo, isErr){
   const t = $('toast');
@@ -439,27 +464,50 @@ function md(src){
     .replace(/^# (.*)$/gm,'<h1>$1</h1>')
     .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
     .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/(https?:\/\/[^\s<)]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>')
     .replace(/^[-*] (.*)$/gm,'<li>$1</li>')
     .replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g,'<ul>$1</ul>')
     .replace(/^(?!<[hulc])(.+)$/gm,'<p>$1</p>');
 }
 
+// Which row the drawer currently shows, so re-selecting it doesn't refetch.
+let drawerNum = null;
+function drawerOpen(){ return $('drawer').classList.contains('open'); }
+
+// While the drawer is out, moving the cursor (click, j/k) swaps in that row's
+// report instead of making the user close and reopen. Rows without a report
+// still show the drawer so the "No report on file" message explains the gap.
+function followDrawer(){
+  const a = view[cursor];
+  if (drawerOpen() && a && a.num !== drawerNum) openReport(a);
+}
+
 async function openReport(a){
   const d = $('drawer');
+  drawerNum = a.num;
   $('drawer-title').textContent = `${a.company} — ${a.role}`;
   $('drawer-body').innerHTML = '<p>Loading…</p>';
   d.classList.add('open'); d.setAttribute('aria-hidden','false');
   const r = await fetch('/api/report?num='+a.num);
   const out = await r.json();
+  if (drawerNum !== a.num) return; // user moved on while this was loading
   $('drawer-path').textContent = out.path || '';
   $('drawer-body').innerHTML = out.markdown
     ? md(out.markdown)
     : `<p>${esc(out.error||'No report on file.')}</p>`;
 }
 function closeDrawer(){
+  drawerNum = null;
   $('drawer').classList.remove('open');
   $('drawer').setAttribute('aria-hidden','true');
 }
+// Navigating anywhere else (search, tools, filters, header) collapses the
+// drawer. Clicks inside it or on table rows are the two things that keep it.
+document.addEventListener('mousedown', e=>{
+  if (!drawerOpen()) return;
+  if (e.target.closest('#drawer') || e.target.closest('#rows tr')) return;
+  closeDrawer();
+});
 
 // ── Tools ───────────────────────────────────────────────
 function renderTools(){
@@ -506,8 +554,8 @@ document.addEventListener('keydown', e=>{
   if (e.key === '/' && !typing) { e.preventDefault(); $('q').focus(); return; }
   if (typing) return;
   const a = view[cursor];
-  if (e.key === 'j' || e.key === 'ArrowDown'){ e.preventDefault(); cursor=Math.min(cursor+1,view.length-1); paintCursor(); }
-  else if (e.key === 'k' || e.key === 'ArrowUp'){ e.preventDefault(); cursor=Math.max(cursor-1,0); paintCursor(); }
+  if (e.key === 'j' || e.key === 'ArrowDown'){ e.preventDefault(); cursor=Math.min(cursor+1,view.length-1); paintCursor(); followDrawer(); }
+  else if (e.key === 'k' || e.key === 'ArrowUp'){ e.preventDefault(); cursor=Math.max(cursor-1,0); paintCursor(); followDrawer(); }
   else if (e.key === 's' && a){ setStatus(a,'SKIP'); }
   else if (e.key === 'Enter' && a){ openReport(a); }
 });
@@ -534,6 +582,10 @@ function paintSortHeaders(){
 
 $('q').addEventListener('input', ()=>{ cursor=0; render(); });
 $('drawer-close').addEventListener('click', closeDrawer);
+$('drawer-reveal').addEventListener('click', ()=>{
+  const a = state.applications.find(x=>x.num===drawerNum);
+  if (a) revealFile(a, 'report');
+});
 
 load().then(renderTools);
 </script>
