@@ -80,12 +80,18 @@ function readTracker() {
   return { rows, lines, colmap };
 }
 
-function pipelinePending() {
-  if (!existsSync(PIPELINE)) return 0;
-  return readFileSync(PIPELINE, 'utf8')
-    .split('\n')
-    .filter((l) => l.startsWith('- [ ] ')).length;
+function readPending() {
+  if (!existsSync(PIPELINE)) return [];
+  const out = [];
+  for (const l of readFileSync(PIPELINE, 'utf8').split('\n')) {
+    const m = /^- \[ \] (.+)$/.exec(l);
+    if (!m) continue;
+    const [url, company = '', title = ''] = m[1].split('|').map((x) => x.trim());
+    out.push({ url, company, title });
+  }
+  return out;
 }
+function pipelinePending() { return readPending().length; }
 
 /**
  * Resolve a tracker report link to a file on disk.
@@ -331,15 +337,7 @@ function readInputs() {
     positive: portals.title_filter?.positive || [],
     negative: portals.title_filter?.negative || [],
   };
-  const pending = [];
-  if (existsSync(PIPELINE)) {
-    for (const l of readFileSync(PIPELINE, 'utf8').split('\n')) {
-      const m = /^- \[ \] (.+)$/.exec(l);
-      if (!m) continue;
-      const [url, company = '', title = ''] = m[1].split('|').map((x) => x.trim());
-      pending.push({ url, company, title });
-    }
-  }
+  const pending = readPending();
   const blacklist = [];
   if (existsSync(BLACKLIST)) {
     for (const l of readFileSync(BLACKLIST, 'utf8').split('\n')) {
@@ -597,6 +595,16 @@ function updateStatusLocked({ num, company, role, status }) {
 // argv — the client sends a key, never a command.
 const TOOLS = {
   scan: { label: 'Run scan', argv: ['scan.mjs'], blurb: 'Search portals for new roles' },
+  // `pipeline` is an LLM mode, so this drives the Claude CLI headless — the
+  // same invocation batch/batch-runner.sh uses (headless runs can't answer
+  // permission prompts). CLAUDE* env vars are stripped so it works when this
+  // server was itself started from inside a Claude Code session.
+  pipeline: {
+    label: 'Run pipeline', bin: 'claude',
+    argv: ['-p', '--dangerously-skip-permissions',
+      'Run career-ops pipeline mode for data/pipeline.md: evaluate every pending `- [ ]` URL (auto-pipeline: report + tracker TSV), then run `node merge-tracker.mjs`. Print one line per URL as you finish it.'],
+    blurb: 'Evaluate queued URLs with Claude (headless, may take minutes)',
+  },
   verify: { label: 'Verify pipeline', argv: ['verify-pipeline.mjs'], blurb: 'Health-check the tracker' },
   merge: { label: 'Merge tracker', argv: ['merge-tracker.mjs'], blurb: 'Fold in pending TSV additions' },
   dedup: { label: 'Dedup tracker', argv: ['dedup-tracker.mjs'], blurb: 'Collapse duplicate rows' },
@@ -618,7 +626,8 @@ function streamTool(key, res) {
   const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   send('start', { label: tool.label });
 
-  const child = spawn(process.execPath, tool.argv, { cwd: ROOT });
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^CLAUDE(CODE|_)/.test(k)));
+  const child = spawn(tool.bin || process.execPath, tool.argv, { cwd: ROOT, env });
   const pump = (stream) => {
     let buf = '';
     stream.on('data', (chunk) => {
@@ -682,6 +691,7 @@ const server = http.createServer(async (req, res) => {
         states: STATE_LIST,
         counts,
         pending: pipelinePending(),
+        queued: readPending(),
         trackerMissing: Boolean(missing),
         tools: Object.entries(TOOLS).map(([k, v]) => ({ key: k, label: v.label, blurb: v.blurb })),
       });

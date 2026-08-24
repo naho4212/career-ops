@@ -21,6 +21,14 @@ Fresh clone with no tracker yet? The board opens empty and tells you the next
 step; it does not crash. Point it at another checkout with
 `CAREER_OPS_ROOT=/path/to/career-ops node crm/server.mjs`.
 
+## Queued (pre-evaluation)
+
+URLs still pending in `data/pipeline.md` show as **Queued** rows ahead of the
+tracker rows, with their own zone in the spine before Pending/Evaluated. The
+only action on a queued row is **Skip** (`s` key too), which drops the URL from
+`pipeline.md` so no tokens are spent evaluating it. Queued rows are not tracker
+rows: no number, score, report, or status change until they are evaluated.
+
 ## Row actions
 
 - **Role name** links to the posting (read from the report's `**URL:**` line;
@@ -38,9 +46,18 @@ step; it does not crash. Point it at another checkout with
 
 ## Tools tab
 
-Six maintenance scripts run from the **Tools** tab (`scan`, `verify-pipeline`,
-`merge-tracker`, `dedup-tracker`, `analyze-patterns --summary`,
-`followup-cadence --summary`), streamed live over SSE. The console renders the
+Seven tools run from the **Tools** tab, streamed live over SSE: `scan`,
+**Run pipeline**, `verify-pipeline`, `merge-tracker`, `dedup-tracker`,
+`analyze-patterns --summary`, `followup-cadence --summary`.
+
+**Run pipeline** is different from the rest: `pipeline` is an LLM mode, so the
+tool drives the Claude CLI headless — `claude -p --dangerously-skip-permissions
+"Run career-ops pipeline mode…"`, the same invocation `batch/batch-runner.sh`
+uses, because a headless run cannot answer permission prompts. It evaluates
+every queued URL, writes reports and tracker TSVs, then merges. Expect minutes,
+not seconds; output arrives when Claude prints it. `CLAUDE*` env vars are
+stripped from the child so it also works when the server was started from
+inside a Claude Code session. The console renders the
 CLI output as a report rather than a log: status emoji become colored markers,
 `====`/`----` rows become rules, ALL-CAPS labels become section heads, blank
 runs collapse, and a footer tallies ok / warnings / errors. Each tool remembers

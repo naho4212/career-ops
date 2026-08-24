@@ -9,7 +9,7 @@
   --base:#0D1014; --panel:#141920; --raised:#1A212A; --line:#222A34;
   --text:#D7DEE6; --dim:#79848F; --faint:#48525D;
   --live:#E9B44C;
-  --s-evaluated:#8C97A4; --s-applied:#E9B44C; --s-responded:#5EA9E8;
+  --s-queued:#6E8FB5; --s-evaluated:#8C97A4; --s-applied:#E9B44C; --s-responded:#5EA9E8;
   --s-interview:#4FD1A5; --s-offer:#B08BF8; --s-rejected:#E8636F;
   --s-discarded:#2E3641; --s-skip:#39434E;
   --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
@@ -185,6 +185,7 @@ tbody td{padding:7px 10px;border-bottom:1px solid rgba(34,42,52,.55);vertical-al
 tbody tr{cursor:default}
 tbody tr:hover{background:var(--panel)}
 tbody tr.sel{background:var(--raised);box-shadow:inset 2px 0 0 var(--text)}
+tbody tr.queued .c-co{color:var(--dim);font-weight:500}
 /* Closed rows recede — they are 68% of the table and should not compete. */
 tbody tr.closed td{color:var(--faint)}
 tbody tr.closed:hover td{color:var(--dim)}
@@ -445,18 +446,21 @@ select.act{padding:3px 4px}
 
 <script>
 const COLOR = {
-  Evaluated:'var(--s-evaluated)', Applied:'var(--s-applied)', Responded:'var(--s-responded)',
+  Queued:'var(--s-queued)', Evaluated:'var(--s-evaluated)', Applied:'var(--s-applied)', Responded:'var(--s-responded)',
   Interview:'var(--s-interview)', Offer:'var(--s-offer)', Rejected:'var(--s-rejected)',
   Discarded:'var(--s-discarded)', SKIP:'var(--s-skip)',
 };
 const ZONES = [
   { label:'In play',  members:['Applied','Responded','Interview','Offer'] },
+  // Queued = URLs in data/pipeline.md not yet evaluated. Surfacing them here
+  // lets the user skip a posting before any tokens are spent on it.
+  { label:'Queued',   members:['Queued'] },
   { label:'Pending',  members:['Evaluated'] },
   { label:'Closed',   members:['Rejected','Discarded','SKIP'] },
 ];
 const CLOSED = new Set(['Rejected','Discarded','SKIP']);
 
-let state = { applications:[], states:[], counts:{}, pending:0, tools:[] };
+let state = { applications:[], states:[], counts:{}, pending:0, tools:[], queued:[] };
 let active = new Set();   // status filter
 let cursor = 0;
 let view = [];
@@ -482,11 +486,19 @@ const esc = (s) => String(s??'').replace(/[&<>"']/g, (c) =>
 async function load(){
   const r = await fetch('/api/state');
   state = await r.json();
+  // Queued postings become pseudo-rows ahead of the tracker rows.
+  const q = (state.queued || []).map(x => ({
+    num: 0, date: '', company: x.company || hostOf(x.url), role: x.title || x.url, url: x.url,
+    score: '', status: 'Queued', pdf: null, report: '', notes: 'queued in data/pipeline.md', queued: true,
+  }));
+  if (q.length) state.counts.Queued = q.length;
+  state.applications = q.concat(state.applications);
   renderSpine(); render();
 }
+function hostOf(u){ try { return new URL(u).host.replace(/^(jobs|boards|job-boards|www)\./,''); } catch { return u; } }
 
 function renderSpine(){
-  const total = state.applications.length;
+  const total = state.applications.filter(a=>!a.queued).length;
   const live = ZONES[0].members.reduce((n,s)=>n+(state.counts[s]||0),0);
   $('tally').innerHTML =
     `${total} evaluated · <b>${live} in play</b> · ${state.pending} queued for evaluation`;
@@ -535,7 +547,7 @@ function render(){
   // Distinguish "filter hid everything" from "nothing tracked yet" so a fresh
   // clone tells the user what to do next instead of suggesting they clear a filter.
   $('empty').innerHTML = state.applications.length === 0
-    ? '<b>No applications tracked yet</b>Paste a job URL into your AI CLI to evaluate it, or run <code>scan</code> from the Tools panel. Rows appear here as <code>data/applications.md</code> fills in.'
+    ? '<b>No applications tracked yet</b>Queue a posting URL in Inputs, then run <code>Run pipeline</code> from Tools (or <code>scan</code> to find roles). Rows appear here as <code>data/applications.md</code> fills in.'
     : '<b>Nothing matches</b>Clear the filter or pick another status band.';
 
   const opts = state.states.map(s=>s.label);
@@ -543,6 +555,14 @@ function render(){
     const closed = CLOSED.has(a.status);
     const scoreDim = (!a.score || a.score==='N/A') ? 'var(--faint)'
       : parseFloat(a.score) >= 4 ? 'var(--live)' : 'var(--dim)';
+    if (a.queued) return `<tr class="queued ${i===cursor?'sel':''}" data-i="${i}">
+      <td class="c-num">—</td>
+      <td class="c-date"></td>
+      <td class="c-co">${esc(a.company)}</td>
+      <td class="c-role"><span title="${esc(a.url)}"><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.role)}</a></span></td>
+      <td class="c-score" style="color:var(--faint)"></td>
+      <td class="c-status"><span class="pill" style="color:${COLOR.Queued};border-color:${COLOR.Queued}">Queued</span></td>
+      <td class="c-act"><button class="act" data-act="drop" title="Drop from data/pipeline.md before it is evaluated">Skip</button></td></tr>`;
     return `<tr class="${closed?'closed':''} ${i===cursor?'sel':''}" data-i="${i}">
       <td class="c-num">${a.num}</td>
       <td class="c-date">${esc(a.date)}</td>
@@ -567,6 +587,7 @@ function render(){
     const a = view[+tr.dataset.i];
     tr.addEventListener('mousedown', ()=>{ cursor=+tr.dataset.i; paintCursor(); followDrawer(); });
     tr.querySelector('[data-act="report"]')?.addEventListener('click', ()=>openReport(a));
+    tr.querySelector('[data-act="drop"]')?.addEventListener('click', ()=>dropQueued(a));
     tr.querySelector('[data-act="set"]')?.addEventListener('change', e=>{
       if (e.target.value) setStatus(a, e.target.value);
     });
@@ -824,7 +845,18 @@ function drawerOpen(){ return $('drawer').classList.contains('open'); }
 // still show the drawer so the "No report on file" message explains the gap.
 function followDrawer(){
   const a = view[cursor];
-  if (drawerOpen() && a && a.num !== drawerNum) openReport(a);
+  if (drawerOpen() && a && !a.queued && a.num !== drawerNum) openReport(a);
+}
+
+// Skip-before-evaluate: remove the URL from data/pipeline.md so no tokens are
+// spent on it. Keeps the Inputs tab in sync if it has been opened.
+async function dropQueued(a){
+  const r = await fetch('/api/inputs/pipeline/remove', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ url:a.url }) });
+  const out = await r.json();
+  if (!out.ok) return toast(out.error || 'Failed', null, true);
+  if (inputs){ inputs = out.inputs; renderInputs(); }
+  toast(`Skipped ${a.company} — dropped from pipeline`);
+  load();
 }
 
 async function openReport(a){
@@ -936,8 +968,8 @@ document.addEventListener('keydown', e=>{
   const a = view[cursor];
   if (e.key === 'j' || e.key === 'ArrowDown'){ e.preventDefault(); cursor=Math.min(cursor+1,view.length-1); paintCursor(); followDrawer(); }
   else if (e.key === 'k' || e.key === 'ArrowUp'){ e.preventDefault(); cursor=Math.max(cursor-1,0); paintCursor(); followDrawer(); }
-  else if (e.key === 's' && a){ setStatus(a,'SKIP'); }
-  else if (e.key === 'Enter' && a){ openReport(a); }
+  else if (e.key === 's' && a){ a.queued ? dropQueued(a) : setStatus(a,'SKIP'); }
+  else if (e.key === 'Enter' && a && !a.queued){ openReport(a); }
 });
 
 // Header sorting: first click ascending, click again to reverse. Clicking a
