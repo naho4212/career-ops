@@ -134,7 +134,7 @@ tbody tr.closed:hover td{color:var(--dim)}
 .c-status{width:100px}
 /* Fits Report + the Status select together; below ~176px the select's chevron
    gets cut off on rows that have a report. */
-.c-act{width:300px;text-align:right;white-space:nowrap}
+.c-act{width:220px;text-align:right;white-space:nowrap}
 .c-act .act.pdf{color:var(--dim)}
 .c-role a{color:inherit;text-decoration:none;border-bottom:1px dotted var(--faint)}
 .c-role a:hover{color:var(--text);border-bottom-color:var(--text)}
@@ -263,6 +263,7 @@ select.act{padding:3px 4px}
   <div class="drawer-head">
     <h2 id="drawer-title">Report</h2>
     <span class="path" id="drawer-path"></span>
+    <a class="act" id="drawer-pdf" target="_blank" rel="noopener" hidden>PDF</a>
     <button class="act" id="drawer-reveal" title="Show report file in Finder">Show file</button>
     <button class="act" id="drawer-close">Close</button>
   </div>
@@ -383,7 +384,7 @@ function render(){
         border-color:${COLOR[a.status]||'var(--line)'}">${esc(a.status)}</span></td>
       <td class="c-act">
         ${a.report && a.report!=='—' ? `<button class="act" data-act="report">Report</button>`:''}
-        ${a.pdf ? `<button class="act pdf" data-act="pdf-view" title="${esc(a.pdf)}">PDF</button><button class="act pdf" data-act="pdf-save" title="Copy to ~/Desktop">Save</button><button class="act pdf" data-act="pdf-reveal" title="Show in Finder">Show</button>`:''}
+        ${a.pdf ? `<button class="act pdf" data-act="pdf-view" title="${esc(a.pdf)}">PDF</button>`:''}
         <select class="act primary" data-act="set" aria-label="Change status for ${esc(a.company)}">
           <option value="">Status…</option>
           ${opts.filter(o=>o!==a.status).map(o=>`<option>${esc(o)}</option>`).join('')}
@@ -396,8 +397,6 @@ function render(){
     tr.addEventListener('mousedown', ()=>{ cursor=+tr.dataset.i; paintCursor(); followDrawer(); });
     tr.querySelector('[data-act="report"]')?.addEventListener('click', ()=>openReport(a));
     tr.querySelector('[data-act="pdf-view"]')?.addEventListener('click', ()=>window.open('/api/pdf?num='+a.num, '_blank'));
-    tr.querySelector('[data-act="pdf-save"]')?.addEventListener('click', ()=>savePdf(a));
-    tr.querySelector('[data-act="pdf-reveal"]')?.addEventListener('click', ()=>revealFile(a, 'pdf'));
     tr.querySelector('[data-act="set"]')?.addEventListener('change', e=>{
       if (e.target.value) setStatus(a, e.target.value);
     });
@@ -428,14 +427,6 @@ async function setStatus(a, status, isUndo){
   toast(`${a.company} → ${status}`, ()=>setStatus(a, prev, true));
 }
 
-// Copies the CV PDF to ~/Desktop so it's one drag away from an upload field,
-// instead of hunting through output/. Never overwrites: name-2.pdf, name-3.pdf…
-async function savePdf(a){
-  const r = await fetch('/api/pdf/save?num='+a.num, { method:'POST' });
-  const out = await r.json();
-  if (!out.ok) return toast(out.error, null, true);
-  toast(`Saved ${out.display}`);
-}
 async function revealFile(a, what){
   const r = await fetch(`/api/reveal?num=${a.num}&what=${what}`, { method:'POST' });
   const out = await r.json();
@@ -485,6 +476,9 @@ function followDrawer(){
 async function openReport(a){
   const d = $('drawer');
   drawerNum = a.num;
+  // PDF link in the header so the CV is one click from its report.
+  $('drawer-pdf').hidden = !a.pdf;
+  $('drawer-pdf').href = '/api/pdf?num=' + a.num;
   $('drawer-title').textContent = `${a.company} — ${a.role}`;
   $('drawer-body').innerHTML = '<p>Loading…</p>';
   d.classList.add('open'); d.setAttribute('aria-hidden','false');

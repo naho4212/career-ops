@@ -30,12 +30,11 @@ step; it does not crash. Point it at another checkout with
   with `j`/`k` swaps in that row's report; clicking anywhere outside the table
   or drawer (search, tools, filters) collapses it. **Show file** in the drawer
   header reveals the report in Finder.
-- **PDF / Save / Show** appear on rows with a CV PDF. `PDF` opens it inline in
-  a new tab; `Save` copies it to `~/Desktop` (never overwrites: `name-2.pdf`,
-  `name-3.pdf`…) so it is one drag from an upload field; `Show` reveals it in
-  Finder. The PDF is resolved from `data/pdf-index.tsv`, then the report's
-  `**PDF:**` line, then a company-slug match in `output/*.pdf` (newest wins).
-  Reveal is macOS-only; elsewhere the toast shows the path instead.
+- **PDF** appears on rows with a CV PDF and opens it inline in a new tab; the
+  same link sits in the report drawer's header. The PDF is resolved from
+  `data/pdf-index.tsv`, then the report's `**PDF:**` line, then a company-slug
+  match in `output/*.pdf` (newest wins). Reveal (drawer `Show file`) is
+  macOS-only; elsewhere the toast shows the path instead.
 
 ## Two independent update channels
 

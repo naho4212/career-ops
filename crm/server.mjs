@@ -17,7 +17,6 @@
 import http from 'node:http';
 import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, statSync, readdirSync, createReadStream } from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { load as yamlLoad } from 'js-yaml';
@@ -180,18 +179,6 @@ function resolvePdf(row, meta) {
 function rowByNum(url) {
   const { rows } = readTracker();
   return rows.find((r) => r.num === Number(url.searchParams.get('num'))) || null;
-}
-
-/** Copy to ~/Desktop without clobbering: name.pdf, name-2.pdf, name-3.pdf… */
-function saveToDesktop(abs) {
-  const desktop = path.join(os.homedir(), 'Desktop');
-  if (!existsSync(desktop)) mkdirSync(desktop, { recursive: true });
-  const ext = path.extname(abs);
-  const base = path.basename(abs, ext);
-  let dest = path.join(desktop, base + ext);
-  for (let i = 2; existsSync(dest); i++) dest = path.join(desktop, `${base}-${i}${ext}`);
-  copyFileSync(abs, dest);
-  return dest;
 }
 
 /** Reveal in the OS file manager. macOS only; elsewhere the caller gets the path. */
@@ -407,14 +394,6 @@ const server = http.createServer(async (req, res) => {
         'Content-Disposition': `${disp}; filename="${path.basename(abs)}"`,
       });
       return createReadStream(abs).pipe(res);
-    }
-
-    if (url.pathname === '/api/pdf/save' && req.method === 'POST') {
-      const row = rowByNum(url);
-      const rel = row && resolvePdf(row, reportMeta(row));
-      if (!rel) return json(res, 404, { error: 'No PDF on file for this role' });
-      const dest = saveToDesktop(path.join(ROOT, rel));
-      return json(res, 200, { ok: true, path: dest, display: dest.replace(os.homedir(), '~') });
     }
 
     if (url.pathname === '/api/reveal' && req.method === 'POST') {
