@@ -28,10 +28,10 @@ step; it does not crash. Point it at another checkout with
   clickable too.
 - **Report** opens the drawer. While it is out, clicking another row or moving
   with `j`/`k` swaps in that row's report; clicking anywhere outside the table
-  or drawer (search, tools, filters) collapses it. When the row has a CV PDF,
-  a `CV:` line at the top of the report names it with **Show in Finder** (the
-  PDF is what gets uploaded to an ATS; macOS-only, elsewhere the toast shows
-  the path).
+  or drawer (search, tools, filters) collapses it. The report header renders
+  as a key/value grid; its `PDF` row is a link to the CV plus **Show in
+  Finder** (the PDF is what gets uploaded to an ATS; macOS-only, elsewhere the
+  toast shows the path). Tables, lists and section rules render properly.
 - **PDF** appears on rows with a CV PDF and is a link that opens it inline in
   a new tab. The PDF is resolved from `data/pdf-index.tsv`, then the report's
   `**PDF:**` line, then a company-slug match in `output/*.pdf` (newest wins).

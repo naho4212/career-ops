@@ -183,19 +183,33 @@ select.act{padding:3px 4px}
 .drawer-head{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line);flex:none}
 .drawer-head h2{margin:0;font-size:13px;font-weight:600;letter-spacing:-.01em}
 .drawer-head .path{font-family:var(--mono);font-size:10px;color:var(--faint);margin-left:auto}
-.drawer-body{overflow:auto;padding:18px;font-size:12.5px;line-height:1.65}
-.drawer-body h1,.drawer-body h2,.drawer-body h3{
+.drawer-body{overflow:auto;padding:18px 20px 40px;font-size:12.5px;line-height:1.6}
+.drawer-body h2{
   font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--live);
-  margin:22px 0 7px;font-weight:600;
+  margin:26px 0 8px;padding-top:14px;border-top:1px solid var(--line);font-weight:600;
 }
-.drawer-body h1:first-child{margin-top:0}
+.drawer-body h2:first-child{margin-top:0;padding-top:0;border-top:0}
+.drawer-body h3{font-size:12px;color:var(--text);margin:14px 0 4px;font-weight:600}
 .drawer-body code{font-family:var(--mono);font-size:11px;background:var(--raised);padding:1px 4px;border-radius:2px}
-.drawer-body ul{padding-left:18px;margin:7px 0}
-.drawer-body a{color:var(--s-responded)}
-.drawer-body p{margin:7px 0;color:var(--dim)}
-.drawer-body strong{color:var(--text)}
-.drawer-body .file-line{display:flex;align-items:center;gap:8px;margin:0 0 12px;padding-bottom:12px;border-bottom:1px solid var(--line)}
-.drawer-body .file-line code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drawer-body ul,.drawer-body ol{padding-left:18px;margin:6px 0;color:var(--dim)}
+.drawer-body li{margin:2px 0}
+.drawer-body a{color:var(--s-responded);text-decoration:none;border-bottom:1px solid transparent}
+.drawer-body a:hover{border-bottom-color:currentColor}
+.drawer-body p{margin:6px 0;color:var(--dim)}
+.drawer-body strong{color:var(--text);font-weight:600}
+.drawer-body hr{border:0;height:0;margin:0}
+.drawer-body table{width:100%;border-collapse:collapse;margin:8px 0 10px;font-size:12px;table-layout:auto}
+.drawer-body th{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);font-weight:600;text-align:left;padding:4px 8px 6px 0;border-bottom:1px solid var(--line)}
+.drawer-body td{padding:5px 8px 5px 0;border-bottom:1px solid var(--line);vertical-align:top;color:var(--dim)}
+.drawer-body td:first-child{color:var(--text)}
+.drawer-body tr:last-child td{border-bottom:0}
+/* Header block: Date / Score / URL / PDF … as a key-value grid */
+.meta{display:grid;grid-template-columns:max-content 1fr;gap:5px 14px;margin:0 0 6px;font-size:12px;align-items:baseline}
+.meta dt{color:var(--faint);font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;padding-top:2px}
+.meta dd{margin:0;color:var(--dim);min-width:0;overflow-wrap:anywhere}
+.meta dd.score{font-family:var(--mono);color:var(--text)}
+.meta dd .act{margin-left:8px;vertical-align:1px}
+.meta dd .muted{color:var(--faint)}
 
 /* ── Toast ──────────────────────────────────────────── */
 .toast{
@@ -447,18 +461,78 @@ function toast(msg, undo, isErr){
   toastTimer = setTimeout(()=>t.classList.remove('show'), undo?7000:3200);
 }
 
-// Minimal markdown — reports are trusted local files, but escape first anyway.
-function md(src){
-  return esc(src)
-    .replace(/^### (.*)$/gm,'<h3>$1</h3>')
-    .replace(/^## (.*)$/gm,'<h2>$1</h2>')
-    .replace(/^# (.*)$/gm,'<h1>$1</h1>')
+// Reports are trusted local files, but everything is escaped before markup
+// is layered on. Inline first (bold, code, links), then a line-based pass for
+// blocks: tables, lists, headings, rules. Enough for what oferta.md emits.
+function inline(t){
+  return esc(t)
     .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
     .replace(/`([^`]+)`/g,'<code>$1</code>')
-    .replace(/(https?:\/\/[^\s<)]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>')
-    .replace(/^[-*] (.*)$/gm,'<li>$1</li>')
-    .replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g,'<ul>$1</ul>')
-    .replace(/^(?!<[hulc])(.+)$/gm,'<p>$1</p>');
+    .replace(/(https?:\/\/[^\s<)]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>');
+}
+function md(src){
+  const lines = src.split('\n'); const out = []; let i = 0;
+  const isRow = l => /^\s*\|.*\|\s*$/.test(l);
+  const isSep = l => /^\s*\|?\s*:?-{2,}/.test(l);
+  const cells = l => l.trim().replace(/^\||\|$/g,'').split('|').map(c=>inline(c.trim()));
+  while (i < lines.length){
+    const l = lines[i];
+    if (!l.trim()){ i++; continue; }
+    if (isRow(l)){
+      const rows = []; while (i < lines.length && isRow(lines[i])) rows.push(lines[i++]);
+      const head = rows.length > 1 && isSep(rows[1]) ? cells(rows[0]) : null;
+      const body = (head ? rows.slice(2) : rows).map(cells);
+      out.push('<table>' + (head ? `<thead><tr>${head.map(c=>`<th>${c}</th>`).join('')}</tr></thead>` : '')
+        + `<tbody>${body.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
+      continue;
+    }
+    if (/^[-*] /.test(l)){
+      const items = []; while (i < lines.length && /^[-*] /.test(lines[i])) items.push(lines[i++].slice(2));
+      out.push(`<ul>${items.map(x=>`<li>${inline(x)}</li>`).join('')}</ul>`); continue;
+    }
+    if (/^\d+\. /.test(l)){
+      const items = []; while (i < lines.length && /^\d+\. /.test(lines[i])) items.push(lines[i++].replace(/^\d+\. /,''));
+      out.push(`<ol>${items.map(x=>`<li>${inline(x)}</li>`).join('')}</ol>`); continue;
+    }
+    let m;
+    if ((m = /^(#{1,3}) (.*)$/.exec(l))){ const n = Math.max(2, m[1].length); out.push(`<h${n}>${inline(m[2])}</h${n}>`); i++; continue; }
+    if (/^-{3,}\s*$/.test(l)){ out.push('<hr>'); i++; continue; }
+    if (/^> /.test(l)){ out.push(`<p><em>${inline(l.slice(2))}</em></p>`); i++; continue; }
+    // paragraph: run of plain lines
+    const para = []; while (i < lines.length && lines[i].trim() && !isRow(lines[i]) && !/^([-*] |\d+\. |#{1,3} |-{3,}\s*$|> )/.test(lines[i])) para.push(lines[i++]);
+    out.push(`<p>${inline(para.join(' '))}</p>`);
+  }
+  return out.join('');
+}
+
+// Header block (`**Key:** value` lines before the first rule) becomes a
+// key-value grid. The title line is dropped — the drawer head already shows
+// it — and the PDF row links the CV plus the Finder action, so there is one
+// place for the file, not two.
+function renderReport(src, a){
+  const lines = src.split('\n'); let i = 0; const meta = [];
+  if (/^# /.test(lines[0] || '')) i++;
+  for (; i < lines.length; i++){
+    const l = lines[i];
+    if (!l.trim()) continue;
+    const m = /^\*\*([^*]+?):\*\*\s*(.*)$/.exec(l);
+    if (m){ meta.push([m[1], m[2]]); continue; }
+    if (/^-{3,}\s*$/.test(l)){ i++; }
+    break;
+  }
+  if (!meta.length) return md(src);
+  const rows = meta.map(([k, v]) => {
+    const key = k.toLowerCase();
+    let val, cls = '';
+    if (key === 'pdf'){
+      val = a.pdf
+        ? `<a href="/api/pdf?num=${a.num}" target="_blank" rel="noopener" title="Open CV">${esc(a.pdf.replace(/^output\//,''))}</a><button class="act" id="drawer-reveal">Show in Finder</button>`
+        : `<span class="muted">${inline(v)}</span>`;
+    } else if (key === 'score'){ val = inline(v); cls = ' class="score"'; }
+    else val = inline(v);
+    return `<dt>${esc(k)}</dt><dd${cls}>${val}</dd>`;
+  });
+  return `<dl class="meta">${rows.join('')}</dl>` + md(lines.slice(i).join('\n'));
 }
 
 // Which row the drawer currently shows, so re-selecting it doesn't refetch.
@@ -483,13 +557,8 @@ async function openReport(a){
   const out = await r.json();
   if (drawerNum !== a.num) return; // user moved on while this was loading
   $('drawer-path').textContent = out.path || '';
-  // CV line at the top of the report: the PDF is what gets uploaded to an ATS,
-  // so that is the file worth revealing in Finder. Rows without a PDF get no line.
-  const fileLine = a.pdf
-    ? `<p class="file-line"><strong>CV:</strong> <code>${esc(a.pdf)}</code> <button class="act" id="drawer-reveal">Show in Finder</button></p>`
-    : '';
   $('drawer-body').innerHTML = out.markdown
-    ? fileLine + md(out.markdown)
+    ? renderReport(out.markdown, a)
     : `<p>${esc(out.error||'No report on file.')}</p>`;
   $('drawer-reveal')?.addEventListener('click', ()=>revealFile(a, 'pdf'));
 }
