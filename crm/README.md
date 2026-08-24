@@ -6,6 +6,39 @@ in this fork as an **overlay** on upstream career-ops: it is not part of the
 upstream system layer, and nothing in it touches your data layer beyond the
 tracker writes you click.
 
+## Quick start
+
+**First time (no career-ops yet)** — needs Node 18+ and Claude Code:
+
+```bash
+git clone https://github.com/naho4212/career-ops.git
+cd career-ops && npm install && (cd crm && npm install)
+```
+
+Open Claude Code in the folder and say hi; it onboards you (CV, target
+roles, salary). Then `node crm/server.mjs` → http://127.0.0.1:7788.
+
+**Already ran career-ops** — keep your data, switch to this fork. Your CV,
+profile, tracker and reports are not in git, so this cannot touch them:
+
+```bash
+cd career-ops && git stash
+git remote rename origin upstream
+git remote add origin https://github.com/naho4212/career-ops.git
+git fetch origin main && git checkout -B main origin/main && git stash pop
+npm install && (cd crm && npm install)
+node crm/server.mjs
+```
+
+If `git stash pop` reports a conflict it is `interview-prep/story-bank.md`;
+keep yours: `git checkout --theirs interview-prep/story-bank.md && git add
+interview-prep/story-bank.md`. Details for both paths are below.
+
+**Then:** paste a job URL in Inputs → hit Evaluate → scored fit report and a
+tailored CV. Terminal tab is a real shell for interactive `claude`. A banner
+appears when the fork has updates; click it to pull. Don't push to this repo —
+fork it if you want to change things.
+
 ## Run
 
 ```bash
